@@ -1,102 +1,366 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
-import json
+import sys
 import os
+import json
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
+    QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit,
+    QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem,
+    QMessageBox, QDialog, QInputDialog, QSplitter, QAbstractItemView,
+    QHeaderView, QListWidgetItem, QWizard, QWizardPage
+)
+from PyQt6.QtCore import Qt
+import shutil
 
-# Current Code on Microsoft Store
+# Current Code I'm working on
 
-class ConlangDictionaryApp:
-    # A GUI application for creating, managing, and searching a dictionary for a constructed language.
+class SPNUEWIntroPage(QWizardPage):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTitle("File Error Due to Update")
 
-    def __init__(self, root):
-        self.root = root
-        self.root.tk.call('tk', 'scaling', 1.25)
-        self.root.title("Conlang Dictionary Builder")
-        self.root.geometry("1000x750")
+        layout = QVBoxLayout()
+        text_display = QTextEdit()
+        text_display.setReadOnly(True)
+
+        text_display.setPlainText(
+            "An update has changed how files are stored.  In order to properly save your current conlang project you"
+            " are required to enter a project name."
+        )
+        text_display.resize(text_display.size())
+        layout.addWidget(text_display)
+        layout.addWidget(QLabel("Enter a project name to save your file as:"))
+        self.nameLineEdit = QLineEdit()
+        layout.addWidget(self.nameLineEdit)
+        self.setLayout(layout)
+
+        self.registerField("name", self.nameLineEdit)
+
+
+class SetProjectNameUpdateErrorWizard(QWizard):
+    def __init__(self, parent=None, info_parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("File Error Due to Update")
+        self.info_parent = info_parent
+
+        self.addPage(SPNUEWIntroPage(self))
+
+
+class EditWordDialog(QDialog):
+    """
+    A dialog window for editing an existing dictionary entry.
+    """
+
+    def __init__(self, entry_to_edit, word_classes, parent=None):
+        super().__init__(parent)
+        self.entry_to_edit = entry_to_edit
+        self.word_classes = word_classes
+        self.new_entry_data = None
+
+        self.setWindowTitle(f"Edit '{self.entry_to_edit['conlang']}'")
+        self.setModal(True)
+        self.setMinimumWidth(450)
+
+        layout = QGridLayout(self)
+        self.setLayout(layout)
+
+        # Form fields
+        layout.addWidget(QLabel("Conlang Word:"), 0, 0)
+        self.con_entry = QLineEdit()
+        self.con_entry.setText(entry_to_edit['conlang'])
+        layout.addWidget(self.con_entry, 0, 1)
+
+        # Join English words back into a comma-separated string
+        english_str = ", ".join(entry_to_edit.get("english", []))
+        layout.addWidget(QLabel("English Translation:"), 1, 0)
+        self.eng_entry = QLineEdit()
+        self.eng_entry.setText(english_str)
+        layout.addWidget(self.eng_entry, 1, 1)
+
+        layout.addWidget(QLabel("Part of Speech:"), 2, 0)
+        self.pos_box = QComboBox()
+        self.pos_box.addItems(self.word_classes)
+        self.pos_box.setCurrentText(entry_to_edit['pos'])
+        layout.addWidget(self.pos_box, 2, 1)
+
+        layout.addWidget(QLabel("Description:"), 3, 0, Qt.AlignmentFlag.AlignTop)
+        self.desc_text = QTextEdit()
+        self.desc_text.setText(entry_to_edit['description'])
+        self.desc_text.setMinimumHeight(100)
+        layout.addWidget(self.desc_text, 3, 1)
+
+        # Join tags back into a comma-separated string
+        tags_str = ", ".join(entry_to_edit.get('tags', []))
+        layout.addWidget(QLabel("Tags (comma-sep):"), 4, 0)
+        self.tags_entry = QLineEdit()
+        self.tags_entry.setText(tags_str)
+        layout.addWidget(self.tags_entry, 4, 1)
+
+        # Buttons
+        button_box = QHBoxLayout()
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_changes)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)  # Closes the dialog
+
+        button_box.addStretch()
+        button_box.addWidget(self.save_button)
+        button_box.addWidget(self.cancel_button)
+        layout.addLayout(button_box, 5, 0, 1, 2)
+
+    def save_changes(self):
+        # Package up the data for the main window to process
+        self.new_entry_data = {
+            "conlang": self.con_entry.text().strip(),
+            "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
+            "pos": self.pos_box.currentText(),
+            "description": self.desc_text.toPlainText().strip(),
+            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()]
+        }
+
+        if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
+            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+            self.new_entry_data = None  # Invalidate data
+            return
+
+        self.accept()  # Close the dialog
+
+
+class ManageTagsDialog(QDialog):
+    """
+    A dialog window for managing the global list of tags.
+    """
+
+    def __init__(self, all_tags, parent=None):
+        super().__init__(parent)
+        self.all_tags = all_tags  # This is a reference to the main list
+        self.setWindowTitle("Manage Tags")
+        self.setModal(True)
+        self.setMinimumSize(300, 400)
+
+        layout = QVBoxLayout(self)
+
+        self.listbox = QListWidget()
+        self.listbox.addItems(sorted(self.all_tags))
+        layout.addWidget(self.listbox)
+
+        entry_frame = QHBoxLayout()
+        self.entry = QLineEdit()
+        self.entry.setPlaceholderText("Enter new tag...")
+        self.add_btn = QPushButton("Add Tag")
+        self.add_btn.clicked.connect(self.add_tag)
+        entry_frame.addWidget(self.entry)
+        entry_frame.addWidget(self.add_btn)
+        layout.addLayout(entry_frame)
+
+        self.remove_btn = QPushButton("Remove Selected Tag")
+        self.remove_btn.clicked.connect(self.remove_tag)
+        layout.addWidget(self.remove_btn)
+
+        self.close_btn = QPushButton("Close")
+        self.close_btn.clicked.connect(self.accept)
+        layout.addWidget(self.close_btn)
+
+        self.tags_changed = False
+
+    def add_tag(self):
+        tag = self.entry.text().strip()
+        if tag and tag not in self.all_tags:
+            self.all_tags.append(tag)
+            self.all_tags.sort()
+            self.listbox.clear()
+            self.listbox.addItems(self.all_tags)
+            self.entry.clear()
+            self.tags_changed = True
+
+    def remove_tag(self):
+        selected_items = self.listbox.selectedItems()
+        if not selected_items:
+            return
+
+        tag_to_remove = selected_items[0].text()
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Really remove '{tag_to_remove}' from the global tag list?\n"
+            "(This does NOT remove it from words.)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.all_tags.remove(tag_to_remove)
+            self.listbox.takeItem(self.listbox.row(selected_items[0]))
+            self.tags_changed = True
+
+
+class OpenProjectDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.info_parent = parent
+
+        self.setWindowTitle("Open/Create Project")
+        self.setModal(True)
+        self.setMinimumSize(300, 400)
+
+        layout = QVBoxLayout(self)
+        top_box = QGroupBox("Select Project")
+        bottom_box = QGroupBox("Create New Project")
+        top_frame = QGridLayout(top_box)
+        bottom_frame = QGridLayout(bottom_box)
+
+        self.project_select = QComboBox()
+        self.project_select.addItems(self.fetch_projects())
+        self.project_select.setCurrentIndex(-1)
+        top_frame.addWidget(self.project_select, 0, 0)
+
+        top_submit = QPushButton("Open")
+        top_submit.clicked.connect(self.open_project)
+        top_frame.addWidget(top_submit, 1, 0)
+
+        self.project_create = QLineEdit()
+        bottom_frame.addWidget(self.project_create, 0, 0)
+
+        bottom_submit = QPushButton("Create")
+        bottom_submit.clicked.connect(self.create_project)
+        bottom_frame.addWidget(bottom_submit, 1, 0)
+
+        layout.addWidget(top_box)
+        layout.addWidget(bottom_box)
+
+    def fetch_projects(self):
+        return os.listdir(self.info_parent.app_data_dir)
+
+    def open_project(self):
+        self.info_parent.dictionary_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_dictionary.json")
+        )
+        self.info_parent.tags_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_tags.json")
+        )
+        self.info_parent.grammar_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_grammar.json")
+        )
+
+        self.accept()
+
+    def create_project(self):
+        os.makedirs(os.path.join(self.info_parent.app_data_dir, self.project_create.text().strip()), exist_ok=True)
+        self.info_parent.dictionary_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_dictionary.json")
+        )
+        self.info_parent.tags_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_tags.json")
+        )
+        self.info_parent.grammar_file = os.path.join(
+            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_grammar.json")
+        )
+
+        self.accept()
+
+
+class ConlangDictionaryApp(QMainWindow):
+    """
+    A GUI application for creating, managing, and searching a dictionary for a
+    constructed language, rewritten in PyQt6.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Conlang Dictionary Builder")
+        self.setGeometry(100, 100, 1100, 800)  # Increased size slightly for PyQt widgets
 
         self.word_classes = [
-            "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection", "Prefix",
-            "Suffix", "Other"
+            "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition",
+            "Conjunction", "Interjection", "Prefix", "Suffix", "Other"
         ]
 
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-
-        app_data_path = os.getenv('LOCALAPPDATA')
-
-        self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")
-
+        # --- Data File Setup ---
+        # Get application data directory
         try:
+            app_data_path = os.getenv('LOCALAPPDATA')
+            if app_data_path is None:
+                app_data_path = os.path.expanduser("~/.local/share")  # Fallback for Linux
+
+            self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")
             os.makedirs(self.app_data_dir, exist_ok=True)
+
         except OSError as e:
-            messagebox.showerror("Fatal Error", f"Could not create data directory: {e}")
-            self.root.destroy()
+            QMessageBox.critical(self, "Fatal Error", f"Could not create data directory: {e}")
+            sys.exit(1)  # Exit if we can't create the data directory
 
         self.dictionary_file = os.path.join(self.app_data_dir, "conlang_dictionary.json")
         self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
         self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
 
+        if os.path.exists(self.dictionary_file):
+            self.check_old_file_and_update()
+        else:
+            dialog = OpenProjectDialog(self)
+            dialog.exec()
+
+        # --- Load Data ---
         self.dictionary = self.load_dictionary()
         self.all_tags = self.load_tags()
         self.grammar_data = self.load_grammar()
 
+        # --- Create UI ---
         self.create_widgets()
 
+        # --- Initial Population ---
         self.update_word_display()
         self.update_tag_filter_listbox()
         self.update_grammar_table_listbox()
         self.load_grammar_rules()
 
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    # --- Data Load/Save Methods (Mostly unchanged, except for dialogs) ---
 
     def load_dictionary(self):
-        # Loads the dictionary from a JSON file and ensures backward compatibility.
         if not os.path.exists(self.dictionary_file):
             return []
         try:
             with open(self.dictionary_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                # Ensure backward compatibility
                 for entry in data:
                     entry.setdefault('pos', 'Other')
                     entry.setdefault('description', '')
                     entry.setdefault('tags', [])
                     entry.setdefault('roots', [])
                     entry.setdefault('derived', [])
+                    # Ensure english is always a list
+                    if 'english' not in entry or not isinstance(entry['english'], list):
+                        entry['english'] = [str(entry.get('english', ''))]
                 return data
         except (json.JSONDecodeError, IOError) as e:
-            messagebox.showerror("Error Loading Dictionary", f"Could not read dictionary file: {e}")
+            QMessageBox.critical(self, "Error Loading Dictionary", f"Could not read dictionary file: {e}")
             return []
 
     def save_dictionary(self):
-        # Saves the current dictionary to the JSON file.
         try:
             with open(self.dictionary_file, 'w', encoding='utf-8') as f:
                 json.dump(self.dictionary, f, ensure_ascii=False, indent=4)
         except IOError as e:
-            messagebox.showerror("Error Saving Dictionary", f"Could not save to dictionary file: {e}")
+            QMessageBox.critical(self, "Error Saving Dictionary", f"Could not save to dictionary file: {e}")
 
     def load_tags(self):
-        # Loads the list of all tags from its JSON file.
         if not os.path.exists(self.tags_file):
             return []
         try:
             with open(self.tags_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
-            messagebox.showerror("Error Loading Tags", f"Could not read tags file: {e}")
+            QMessageBox.critical(self, "Error Loading Tags", f"Could not read tags file: {e}")
             return []
 
     def save_tags(self):
-        # Saves the list of all tags to its JSON file.
         try:
             self.all_tags.sort()
             with open(self.tags_file, 'w', encoding='utf-8') as f:
                 json.dump(self.all_tags, f, ensure_ascii=False, indent=4)
         except IOError as e:
-            messagebox.showerror("Error Saving Tags", f"Could not save to tags file: {e}")
+            QMessageBox.critical(self, "Error Saving Tags", f"Could not save to tags file: {e}")
 
     def load_grammar(self):
-        # Loads grammar rules and tables from its JSON file.
         if not os.path.exists(self.grammar_file):
             return {"rules": "", "tables": {}}
         try:
@@ -104,301 +368,379 @@ class ConlangDictionaryApp:
                 data = json.load(f)
                 data.setdefault('rules', '')
                 data.setdefault('tables', {})
+
+                # --- Migration ---
+                # Check for old string-based table data and migrate
+                migrated_tables = {}
+                for table_name, content in data['tables'].items():
+                    if isinstance(content, str):
+                        # This is old data. Migrate it to the new structure.
+                        print(f"Migrating old grammar table: {table_name}")
+                        migrated_data = {
+                            "data": [[content]],
+                            "row_headers": ["1"],
+                            "col_headers": ["Notes"]
+                        }
+                        migrated_tables[table_name] = migrated_data
+                    elif isinstance(content, dict):
+                        # This is new data, just ensure it has all keys
+                        content.setdefault("data", [[]])
+                        content.setdefault("row_headers", [])
+                        content.setdefault("col_headers", [])
+                        migrated_tables[table_name] = content
+
+                data['tables'] = migrated_tables
+                # --- End Migration ---
+
                 return data
         except (json.JSONDecodeError, IOError) as e:
-            messagebox.showerror("Error Loading Grammar", f"Could not read grammar file: {e}")
+            QMessageBox.critical(self, "Error Loading Grammar", f"Could not read grammar file: {e}")
             return {"rules": "", "tables": {}}
 
     def save_grammar(self):
-        # Saves the grammar rules and tables to its JSON file.
         try:
             with open(self.grammar_file, 'w', encoding='utf-8') as f:
                 json.dump(self.grammar_data, f, ensure_ascii=False, indent=4)
         except IOError as e:
-            messagebox.showerror("Error Saving Grammar", f"Could not save to grammar file: {e}")
+            QMessageBox.critical(self, "Error Saving Grammar", f"Could not save to grammar file: {e}")
+
+    def check_old_file_and_update(self):
+        if os.path.exists(self.dictionary_file):
+            wizard = SetProjectNameUpdateErrorWizard(info_parent=self)
+
+            if wizard.exec():
+                name = wizard.field("name")
+
+                new_location = os.path.join(self.app_data_dir, name)
+                os.makedirs(new_location, exist_ok=True)
+
+                if os.path.exists(self.dictionary_file):
+                    new_dict_path = os.path.join(new_location, "conlang_dictionary.json")
+                    shutil.move(self.dictionary_file, new_location)
+                    self.dictionary_file = new_dict_path
+
+                if os.path.exists(self.tags_file):
+                    new_tags_path = os.path.join(new_location, "conlang_tags.json")
+                    shutil.move(self.tags_file, new_location)
+                    self.tags_file = new_tags_path
+
+                if os.path.exists(self.grammar_file):
+                    new_grammar_path = os.path.join(new_location, "conlang_grammar.json")
+                    shutil.move(self.grammar_file, new_location)
+                    self.grammar_file = new_grammar_path
+
+    # --- UI Creation Methods ---
 
     def create_widgets(self):
-        # Creates and lays out all the GUI widgets.
-        self.main_notebook = ttk.Notebook(self.root)
-        self.main_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.main_notebook = QTabWidget()
+        self.setCentralWidget(self.main_notebook)
 
-        self.tab_dictionary = ttk.Frame(self.main_notebook, padding=10)
-        self.tab_grammar = ttk.Frame(self.main_notebook, padding=10)
-        self.tab_stats = ttk.Frame(self.main_notebook, padding=10)
-        self.tab_help = ttk.Frame(self.main_notebook, padding=10)
+        # Create tabs
+        self.tab_dictionary = QWidget()
+        self.tab_grammar = QWidget()
+        self.tab_stats = QWidget()
+        self.tab_help = QWidget()
 
-        self.main_notebook.add(self.tab_dictionary, text='Dictionary')
-        self.main_notebook.add(self.tab_grammar, text='Grammar Appendix')
-        self.main_notebook.add(self.tab_stats, text='Statistics')
-        self.main_notebook.add(self.tab_help, text='How To Use / Help')
+        self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
+        self.main_notebook.addTab(self.tab_grammar, 'Grammar Appendix')
+        self.main_notebook.addTab(self.tab_stats, 'Statistics')
+        self.main_notebook.addTab(self.tab_help, 'How To Use / Help')
 
-        self.create_dictionary_tab(self.tab_dictionary)
-        self.create_grammar_tab(self.tab_grammar)
-        self.create_statistics_tab(self.tab_stats)
-        self.create_help_tab(self.tab_help)
+        # Populate tabs
+        self.create_dictionary_tab()
+        self.create_grammar_tab()
+        self.create_statistics_tab()
+        self.create_help_tab()
 
-    def create_dictionary_tab(self, parent_tab):
-        # Create all widgets for the Dictionary tab.
-        main_frame = ttk.Frame(parent_tab)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+    def create_dictionary_tab(self):
+        main_layout = QHBoxLayout(self.tab_dictionary)  # Main layout for the tab
 
-        # Left Panel
-        left_panel = ttk.Frame(main_frame, width=350)
-        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10), anchor=tk.N)
-        left_panel.pack_propagate(False)
+        # --- Left Panel ---
+        left_panel = QWidget()
+        left_panel_layout = QVBoxLayout(left_panel)
+        left_panel.setMaximumWidth(400)  # Similar to fixed width in Tkinter
 
-        # Add Word Secion
-        add_frame = ttk.LabelFrame(left_panel, text="Add Word", padding="10")
-        add_frame.pack(fill=tk.X, expand=False)
+        # Add Word Group
+        add_frame = QGroupBox("Add Word")
+        add_frame_layout = QGridLayout(add_frame)
 
-        ttk.Label(add_frame, text="Conlang Word:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.conlang_entry = ttk.Entry(add_frame, width=30)
-        self.conlang_entry.grid(row=0, column=1, sticky=tk.EW, pady=2)
+        add_frame_layout.addWidget(QLabel("Conlang Word:"), 0, 0)
+        self.conlang_entry = QLineEdit()
+        add_frame_layout.addWidget(self.conlang_entry, 0, 1)
 
-        ttk.Label(add_frame, text="English Translation:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.english_entry = ttk.Entry(add_frame, width=30)
-        self.english_entry.grid(row=1, column=1, sticky=tk.EW, pady=2)
+        add_frame_layout.addWidget(QLabel("English Translation:"), 1, 0)
+        self.english_entry = QLineEdit()
+        self.english_entry.setPlaceholderText("e.g., set, place")
+        add_frame_layout.addWidget(self.english_entry, 1, 1)
 
-        ttk.Label(add_frame, text="Part of Speech:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.pos_combobox = ttk.Combobox(add_frame, values=self.word_classes, width=27, state='readonly')
-        self.pos_combobox.grid(row=2, column=1, sticky=tk.EW, pady=2)
+        add_frame_layout.addWidget(QLabel("Part of Speech:"), 2, 0)
+        self.pos_combobox = QComboBox()
+        self.pos_combobox.addItems(self.word_classes)
+        self.pos_combobox.setCurrentIndex(-1)  # No selection
+        add_frame_layout.addWidget(self.pos_combobox, 2, 1)
 
-        ttk.Label(add_frame, text="Description:").grid(row=3, column=0, sticky=tk.NW, pady=2)
-        self.description_text = tk.Text(add_frame, width=30, height=4, wrap=tk.WORD)
-        self.description_text.grid(row=3, column=1, sticky=tk.EW, pady=2)
+        add_frame_layout.addWidget(QLabel("Description:"), 3, 0, Qt.AlignmentFlag.AlignTop)
+        self.description_text = QTextEdit()
+        self.description_text.setFixedHeight(80)
+        add_frame_layout.addWidget(self.description_text, 3, 1)
 
-        ttk.Label(add_frame, text="Tags (comma-sep):").grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.tags_entry = ttk.Entry(add_frame, width=30)
-        self.tags_entry.grid(row=4, column=1, sticky=tk.EW, pady=2)
+        add_frame_layout.addWidget(QLabel("Tags (comma-sep):"), 4, 0)
+        self.tags_entry = QLineEdit()
+        self.tags_entry.setPlaceholderText("e.g., informal, tech")
+        add_frame_layout.addWidget(self.tags_entry, 4, 1)
 
-        add_button = ttk.Button(add_frame, text="Add Word", command=self.add_word)
-        add_button.grid(row=5, column=0, columnspan=2, pady=10)
+        add_button = QPushButton("Add Word")
+        add_button.clicked.connect(self.add_word)
+        add_frame_layout.addWidget(add_button, 5, 0, 1, 2)
 
-        add_frame.columnconfigure(1, weight=1)
+        left_panel_layout.addWidget(add_frame)
 
-        # Search and Filter Section
-        search_frame = ttk.LabelFrame(left_panel, text="Search & Filter", padding="10")
-        search_frame.pack(fill=tk.X, expand=False, pady=10)
+        # Search and Filter Group
+        search_frame = QGroupBox("Search & Filter")
+        search_frame_layout = QVBoxLayout(search_frame)
 
-        ttk.Label(search_frame, text="Search Term:").pack(anchor=tk.W)
-        self.search_entry = ttk.Entry(search_frame)
-        self.search_entry.pack(fill=tk.X, pady=(0, 5))
-        self.search_entry.bind("<KeyRelease>", self.update_word_display)
+        search_frame_layout.addWidget(QLabel("Search Term:"))
+        self.search_entry = QLineEdit()
+        self.search_entry.textChanged.connect(self.update_word_display)
+        search_frame_layout.addWidget(self.search_entry)
 
-        self.search_var = tk.StringVar(value="conlang")
-        ttk.Radiobutton(
-            search_frame, text="In Conlang", variable=self.search_var, value="conlang", command=self.update_word_display
-        ).pack(anchor=tk.W)
-        ttk.Radiobutton(
-            search_frame, text="In English", variable=self.search_var, value="english", command=self.update_word_display
-        ).pack(anchor=tk.W)
+        self.radio_conlang = QRadioButton("In Conlang")
+        self.radio_conlang.setChecked(True)
+        self.radio_conlang.toggled.connect(self.update_word_display)
+        search_frame_layout.addWidget(self.radio_conlang)
 
-        ttk.Label(search_frame, text="Filter by Class:").pack(anchor=tk.W, pady=(10, 0))
-        self.filter_pos_combobox = ttk.Combobox(
-            search_frame, values=["All Classes"] + self.word_classes, state='readonly'
-        )
-        self.filter_pos_combobox.set("All Classes")
-        self.filter_pos_combobox.bind("<<ComboboxSelected>>", self.update_word_display)
-        self.filter_pos_combobox.pack(fill=tk.X)
+        self.radio_english = QRadioButton("In English")
+        self.radio_english.toggled.connect(self.update_word_display)
+        search_frame_layout.addWidget(self.radio_english)
 
-        ttk.Label(search_frame, text="Filter by Tags:").pack(anchor=tk.W, pady=(10, 0))
-        tag_filter_frame = ttk.Frame(search_frame)
-        tag_filter_frame.pack(fill=tk.X, expand=True)
+        search_frame_layout.addWidget(QLabel("Filter by Class:"))
+        self.filter_pos_combobox = QComboBox()
+        self.filter_pos_combobox.addItems(["All Classes"] + self.word_classes)
+        self.filter_pos_combobox.currentIndexChanged.connect(self.update_word_display)
+        search_frame_layout.addWidget(self.filter_pos_combobox)
 
-        tag_scrollbar = ttk.Scrollbar(tag_filter_frame, orient=tk.VERTICAL)
-        self.tag_filter_listbox = tk.Listbox(
-            tag_filter_frame, selectmode=tk.MULTIPLE, height=5, yscrollcommand=tag_scrollbar.set, exportselection=False
-        )
-        tag_scrollbar.config(command=self.tag_filter_listbox.yview)
-        tag_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tag_filter_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.tag_filter_listbox.bind("<<ListboxSelect>>", self.update_word_display)
+        search_frame_layout.addWidget(QLabel("Filter by Tags:"))
+        self.tag_filter_listbox = QListWidget()
+        self.tag_filter_listbox.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.tag_filter_listbox.itemSelectionChanged.connect(self.update_word_display)
+        self.tag_filter_listbox.setFixedHeight(100)
+        search_frame_layout.addWidget(self.tag_filter_listbox)
 
-        manage_tags_button = ttk.Button(search_frame, text="Manage Tags", command=self.manage_tags)
-        manage_tags_button.pack(pady=(5, 0), fill=tk.X)
+        manage_tags_button = QPushButton("Manage Tags")
+        manage_tags_button.clicked.connect(self.manage_tags)
+        search_frame_layout.addWidget(manage_tags_button)
 
-        clear_button = ttk.Button(search_frame, text="Clear Filters / Show All", command=self.clear_filters)
-        clear_button.pack(pady=10, fill=tk.X)
+        clear_button = QPushButton("Clear Filters / Show All")
+        clear_button.clicked.connect(self.clear_filters)
+        search_frame_layout.addWidget(clear_button)
 
-        # Right Panel
-        right_panel = ttk.Frame(main_frame)
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        left_panel_layout.addWidget(search_frame)
+        left_panel_layout.addStretch(1)  # Pushes widgets to the top
+        main_layout.addWidget(left_panel)
 
-        dict_frame = ttk.LabelFrame(right_panel, text="Dictionary", padding="10")
-        dict_frame.pack(fill=tk.BOTH, expand=True)
+        # --- Right Panel ---
+        right_panel = QWidget()
+        right_panel_layout = QVBoxLayout(right_panel)
 
-        cols = ("Conlang Word", "English Translation", "Part of Speech", "Tags")
-        self.tree = ttk.Treeview(dict_frame, columns=cols, show='headings', selectmode='browse')
+        # Dictionary Table
+        dict_frame = QGroupBox("Dictionary")
+        dict_frame_layout = QVBoxLayout(dict_frame)
 
-        for col in cols:
-            self.tree.heading(col, text=col)
-        self.tree.column("Conlang Word", width=150)
-        self.tree.column("English Translation", width=150)
-        self.tree.column("Part of Speech", width=100)
-        self.tree.column("Tags", width=150)
+        self.cols = ("Conlang Word", "English Translation", "Part of Speech", "Tags")
+        self.tree = QTableWidget(0, len(self.cols))
+        self.tree.setHorizontalHeaderLabels(self.cols)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)  # Read-only
+        self.tree.verticalHeader().setVisible(False)
+        self.tree.horizontalHeader().setStretchLastSection(True)
+        self.tree.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.tree.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tree.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.tree.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.tree.setSortingEnabled(True)
 
-        scrollbar = ttk.Scrollbar(dict_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.itemSelectionChanged.connect(self.on_item_select)
+        self.tree.itemDoubleClicked.connect(self.on_item_double_click)
 
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.tree.bind("<Double-1>", self.on_item_double_click)
-        self.tree.bind("<<TreeviewSelect>>", self.on_item_select)
+        dict_frame_layout.addWidget(self.tree)
 
         # Edit/Delete Buttons
-        button_frame = ttk.Frame(right_panel)
-        button_frame.pack(fill=tk.X, pady=5)
-        delete_button = ttk.Button(button_frame, text="Delete Selected", command=self.delete_word)
-        delete_button.pack(side=tk.LEFT, padx=5)
-        edit_button = ttk.Button(button_frame, text="Edit Selected", command=self.edit_word)
-        edit_button.pack(side=tk.LEFT, padx=5)
+        button_frame = QHBoxLayout()
+        delete_button = QPushButton("Delete Selected")
+        delete_button.clicked.connect(self.delete_word)
+        edit_button = QPushButton("Edit Selected")
+        edit_button.clicked.connect(self.edit_word)
+        button_frame.addWidget(delete_button)
+        button_frame.addWidget(edit_button)
+        button_frame.addStretch(1)
+        dict_frame_layout.addLayout(button_frame)
+
+        right_panel_layout.addWidget(dict_frame)
 
         # Details Notebook
-        self.details_notebook = ttk.Notebook(right_panel)
-        self.details_notebook.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.details_notebook = QTabWidget()
+        self.details_notebook.setMaximumHeight(250)  # Set a max height
 
         # Description Tab
-        desc_tab = ttk.Frame(self.details_notebook, padding=10)
-        self.display_description_text = tk.Text(
-            desc_tab, height=6, wrap=tk.WORD, state=tk.DISABLED, background=self.root.cget('bg'), relief=tk.FLAT
-        )
-        self.display_description_text.pack(fill=tk.BOTH, expand=True)
+        desc_tab = QWidget()
+        desc_tab_layout = QVBoxLayout(desc_tab)
+        self.display_description_text = QTextEdit()
+        self.display_description_text.setReadOnly(True)
+        desc_tab_layout.addWidget(self.display_description_text)
+        self.details_notebook.addTab(desc_tab, "Description")
 
         # Etymology Tab
-        etym_tab = ttk.Frame(self.details_notebook, padding=5)
-        etym_tab.columnconfigure(0, weight=1)
-        etym_tab.columnconfigure(1, weight=1)
-        etym_tab.rowconfigure(1, weight=1)
+        etym_tab = QWidget()
+        etym_tab_layout = QHBoxLayout(etym_tab)
 
-        # Roots
-        roots_frame = ttk.LabelFrame(etym_tab, text="Root Words (comes from)")
-        roots_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=5, pady=5)
-        roots_frame.rowconfigure(0, weight=1)
-        roots_frame.columnconfigure(0, weight=1)
+        # Roots Group
+        roots_frame = QGroupBox("Root Words (comes from)")
+        roots_frame_layout = QVBoxLayout(roots_frame)
+        self.roots_listbox = QListWidget()
+        self.roots_listbox.itemDoubleClicked.connect(self.jump_to_word_from_listbox)
+        roots_frame_layout.addWidget(self.roots_listbox)
+        roots_btn_layout = QHBoxLayout()
+        add_root_btn = QPushButton("Add Root")
+        # Use lambda to pass the argument
+        add_root_btn.clicked.connect(lambda: self.add_etymology_link('root'))
+        del_root_btn = QPushButton("Remove Root")
+        del_root_btn.clicked.connect(lambda: self.remove_etymology_link('root'))
+        roots_btn_layout.addWidget(add_root_btn)
+        roots_btn_layout.addWidget(del_root_btn)
+        roots_frame_layout.addLayout(roots_btn_layout)
 
-        self.roots_listbox = tk.Listbox(roots_frame, exportselection=False)
-        self.roots_listbox.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
-        self.roots_listbox.bind("<Double-1>", self.jump_to_word_from_listbox)
+        # Derived Group
+        derived_frame = QGroupBox("Derived Words (leads to)")
+        derived_frame_layout = QVBoxLayout(derived_frame)
+        self.derived_listbox = QListWidget()
+        self.derived_listbox.itemDoubleClicked.connect(self.jump_to_word_from_listbox)
+        derived_frame_layout.addWidget(self.derived_listbox)
+        derived_btn_layout = QHBoxLayout()
+        add_derived_btn = QPushButton("Add Derived")
+        add_derived_btn.clicked.connect(lambda: self.add_etymology_link('derived'))
+        del_derived_btn = QPushButton("Remove Derived")
+        del_derived_btn.clicked.connect(lambda: self.remove_etymology_link('derived'))
+        derived_btn_layout.addWidget(add_derived_btn)
+        derived_btn_layout.addWidget(del_derived_btn)
+        derived_frame_layout.addLayout(derived_btn_layout)
 
-        add_root_btn = ttk.Button(roots_frame, text="Add Root", command=lambda: self.add_etymology_link('root'))
-        add_root_btn.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        del_root_btn = ttk.Button(roots_frame, text="Remove Root", command=lambda: self.remove_etymology_link('root'))
-        del_root_btn.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        etym_tab_layout.addWidget(roots_frame)
+        etym_tab_layout.addWidget(derived_frame)
+        self.details_notebook.addTab(etym_tab, "Etymology")
 
-        # Derived
-        derived_frame = ttk.LabelFrame(etym_tab, text="Derived Words (leads to)")
-        derived_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=5, pady=5)
-        derived_frame.rowconfigure(0, weight=1)
-        derived_frame.columnconfigure(0, weight=1)
+        right_panel_layout.addWidget(self.details_notebook)
+        main_layout.addWidget(right_panel, 1)  # Add right panel with stretch factor 1
 
-        self.derived_listbox = tk.Listbox(derived_frame, exportselection=False)
-        self.derived_listbox.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
-        self.derived_listbox.bind("<Double-1>", self.jump_to_word_from_listbox)
-
-        add_derived_btn = ttk.Button(derived_frame, text="Add Derived",
-                                     command=lambda: self.add_etymology_link('derived'))
-        add_derived_btn.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        del_derived_btn = ttk.Button(derived_frame, text="Remove Derived",
-                                     command=lambda: self.remove_etymology_link('derived'))
-        del_derived_btn.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
-
-        self.details_notebook.add(desc_tab, text='Description')
-        self.details_notebook.add(etym_tab, text='Etymology')
-
-    def create_grammar_tab(self, parent_tab):
-        # Create all widgets for the Grammar Appendix tab.
-        main_pane = ttk.PanedWindow(parent_tab, orient=tk.VERTICAL)
-        main_pane.pack(fill=tk.BOTH, expand=True)
+    def create_grammar_tab(self):
+        # Use a splitter to allow resizing
+        main_splitter = QSplitter(Qt.Orientation.Vertical, self.tab_grammar)
+        layout = QHBoxLayout(self.tab_grammar)  # Main layout
+        layout.addWidget(main_splitter)
 
         # Rules Pane
-        rules_frame = ttk.LabelFrame(main_pane, text="Grammar Rules", padding="10")
-        main_pane.add(rules_frame, weight=0)
+        rules_frame = QGroupBox("Grammar Rules")
+        rules_layout = QVBoxLayout(rules_frame)
+        self.grammar_rules_text = QTextEdit()
+        rules_layout.addWidget(self.grammar_rules_text)
+        save_rules_btn = QPushButton("Save Rules")
+        save_rules_btn.clicked.connect(self.save_grammar_rules)
+        rules_layout.addWidget(save_rules_btn)
 
-        rules_text_frame = ttk.Frame(rules_frame)
-        rules_text_frame.pack(fill=tk.X, expand=False)
-
-        rules_scrollbar = ttk.Scrollbar(rules_text_frame, orient=tk.VERTICAL)
-        self.grammar_rules_text = tk.Text(rules_text_frame, wrap=tk.WORD, yscrollcommand=rules_scrollbar.set, height=15)
-        rules_scrollbar.config(command=self.grammar_rules_text.yview)
-        rules_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.grammar_rules_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        save_rules_btn = ttk.Button(rules_frame, text="Save Rules", command=self.save_grammar_rules)
-        save_rules_btn.pack(pady=5)
+        main_splitter.addWidget(rules_frame)
 
         # Tables Pane
-        tables_frame = ttk.LabelFrame(main_pane, text="Grammar Tables", padding="10")
-        main_pane.add(tables_frame, weight=1)
-
-        tables_frame.columnconfigure(1, weight=1)
-        tables_frame.rowconfigure(0, weight=1)
+        tables_frame = QGroupBox("Grammar Tables")
+        tables_layout = QHBoxLayout(tables_frame)  # Horizontal layout
+        tables_frame.setLayout(tables_layout)
 
         # Table List and Controls
-        table_controls_frame = ttk.Frame(tables_frame)
-        table_controls_frame.grid(row=0, column=0, sticky="nsw", padx=(0, 10))
+        table_controls_frame = QWidget()
+        table_controls_layout = QVBoxLayout(table_controls_frame)
+        table_controls_layout.addWidget(QLabel("Tables:"))
+        self.table_listbox = QListWidget()
+        self.table_listbox.itemSelectionChanged.connect(self.load_table_into_editor)
+        table_controls_layout.addWidget(self.table_listbox)
 
-        ttk.Label(table_controls_frame, text="Tables:").pack(anchor=tk.W)
-        self.table_listbox = tk.Listbox(table_controls_frame, height=10, exportselection=False)
-        self.table_listbox.pack(expand=True) # fill=tk.Y
-        self.table_listbox.bind("<<ListboxSelect>>", self.load_table_into_editor)
+        create_table_btn = QPushButton("Create Table")
+        create_table_btn.clicked.connect(self.create_grammar_table)
+        table_controls_layout.addWidget(create_table_btn)
 
-        create_table_btn = ttk.Button(table_controls_frame, text="Create Table", command=self.create_grammar_table)
-        create_table_btn.pack(fill=tk.X, pady=(5, 0))
-        delete_table_btn = ttk.Button(table_controls_frame, text="Delete Table", command=self.delete_grammar_table)
-        delete_table_btn.pack(fill=tk.X, pady=5)
+        delete_table_btn = QPushButton("Delete Table")
+        delete_table_btn.clicked.connect(self.delete_grammar_table)
+        table_controls_layout.addWidget(delete_table_btn)
+
+        table_controls_frame.setMaximumWidth(250)
+        tables_layout.addWidget(table_controls_frame)
 
         # Table Editor
-        table_editor_frame = ttk.Frame(tables_frame)
-        table_editor_frame.grid(row=0, column=1, sticky="nsew")
-        table_editor_frame.rowconfigure(0, weight=1)
-        table_editor_frame.columnconfigure(0, weight=1)
+        table_editor_frame = QWidget()
+        table_editor_layout = QVBoxLayout(table_editor_frame)
 
-        table_editor_scrollbar = ttk.Scrollbar(table_editor_frame, orient=tk.VERTICAL)
-        self.table_text_editor = tk.Text(table_editor_frame, wrap=tk.WORD, yscrollcommand=table_editor_scrollbar.set)
-        table_editor_scrollbar.config(command=self.table_text_editor.yview)
-        table_editor_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.table_text_editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # --- New Table Controls ---
+        table_edit_controls_layout = QHBoxLayout()
+        self.add_row_btn = QPushButton("Add Row")
+        self.add_row_btn.clicked.connect(self.add_table_row)
+        self.remove_row_btn = QPushButton("Remove Row")
+        self.remove_row_btn.clicked.connect(self.remove_table_row)
+        self.add_col_btn = QPushButton("Add Column")
+        self.add_col_btn.clicked.connect(self.add_table_column)
+        self.remove_col_btn = QPushButton("Remove Column")
+        self.remove_col_btn.clicked.connect(self.remove_table_column)
 
-        save_table_btn = ttk.Button(tables_frame, text="Save Current Table", command=self.save_grammar_table)
-        save_table_btn.grid(row=1, column=1, sticky="ew", pady=5)
+        table_edit_controls_layout.addWidget(self.add_row_btn)
+        table_edit_controls_layout.addWidget(self.remove_row_btn)
+        table_edit_controls_layout.addStretch()
+        table_edit_controls_layout.addWidget(self.add_col_btn)
+        table_edit_controls_layout.addWidget(self.remove_col_btn)
 
-    def create_statistics_tab(self, parent_tab):
-        stats_frame = ttk.Frame(parent_tab)
-        stats_frame.pack(fill=tk.BOTH, expand=True)
+        table_editor_layout.addLayout(table_edit_controls_layout)
+        # --- End New Table Controls ---
 
-        stats_scrollbar = ttk.Scrollbar(stats_frame, orient=tk.VERTICAL)
-        self.stats_text = tk.Text(
-            stats_frame, wrap=tk.WORD, yscrollcommand=stats_scrollbar.set, relief=tk.FLAT, background=self.root.cget('bg')
-        )
-        stats_scrollbar.config(command=self.stats_text.yview)
-        stats_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.stats_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.table_editor = QTableWidget()  # Replaced QTextEdit
+        # Allow editing headers
+        self.table_editor.horizontalHeader().setSectionsClickable(True)
+        self.table_editor.verticalHeader().setSectionsClickable(True)
+        self.table_editor.horizontalHeader().sectionDoubleClicked.connect(self.edit_table_header)
+        self.table_editor.verticalHeader().sectionDoubleClicked.connect(self.edit_table_header)
 
-        self.refresh_stats_page()
+        table_editor_layout.addWidget(self.table_editor)
 
-        self.stats_text.config(state=tk.DISABLED)
+        save_table_btn = QPushButton("Save Current Table")
+        save_table_btn.clicked.connect(self.save_grammar_table)
+        table_editor_layout.addWidget(save_table_btn)
 
-    def create_help_tab(self, parent_tab):
-        # Create all widgets for the Help tab.
-        help_frame = ttk.Frame(parent_tab)
-        help_frame.pack(fill=tk.BOTH, expand=True)
+        tables_layout.addWidget(table_editor_frame)  # Add to horizontal layout
 
-        help_scrollbar = ttk.Scrollbar(help_frame, orient=tk.VERTICAL)
-        help_text = tk.Text(help_frame, wrap=tk.WORD, yscrollcommand=help_scrollbar.set,
-                            relief=tk.FLAT, background=self.root.cget('bg'))
-        help_scrollbar.config(command=help_text.yview)
-        help_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        help_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        main_splitter.addWidget(tables_frame)
+        main_splitter.setSizes([300, 500])  # Initial size split
 
-        # Define the help content
+    def create_statistics_tab(self):
+        layout = QVBoxLayout(self.tab_stats)
+        self.stats_text = QTextEdit()
+        self.stats_text.setReadOnly(True)
+        layout.addWidget(self.stats_text)
+
+        refresh_btn = QPushButton("Refresh Statistics")
+        refresh_btn.clicked.connect(self.refresh_stats_page)
+        layout.addWidget(refresh_btn)
+
+        self.refresh_stats_page()  # Initial load
+
+    def create_help_tab(self):
+        layout = QVBoxLayout(self.tab_help)
+        help_text_widget = QTextEdit()
+        help_text_widget.setReadOnly(True)
+        layout.addWidget(help_text_widget)
+
+        # Help content (same as before)
         help_content = """Welcome to the Conlang Dictionary Builder!
 
 This application helps you create, manage, and explore your constructed language. Here's a quick guide to its features.
 
 == Dictionary Tab ==
 
-* Add Word: Use the form on the left to add a new word. "Conlang Word" and "English Translation" are required. You can add multiple English translations by separating them with a comma and a space (e.g., "set, place").
+* Add Word: Use the form on the left to add a new word. "Conlang Word" and "English Translation" are required. You can add multiple English translations by separating them with a comma (e.g., "set, place").
 
 * Search & Filter:
     - Search Term: Type to search in either the Conlang or English words.
@@ -445,62 +787,81 @@ This tab is for your language's documentation.
 * Grammar: Your grammar rules and tables are saved to conlang_grammar.json ONLY when you click the "Save Rules" or "Save Current Table" buttons.
 * Tags: Your tag list is saved to conlang_tags.json when you add or remove tags via the "Manage Tags" window.
 """
+        help_text_widget.setText(help_content)
 
-        # Add the text
-        help_text.insert(tk.END, help_content)
-
-        # Make the text widget read-only
-        help_text.config(state=tk.DISABLED)
+    # --- Logic and Slot Methods ---
 
     def populate_dictionary_list(self, entries):
-        # Populates the treeview with the list of dictionary entries.
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # Disable sorting while populating
+        self.tree.setSortingEnabled(False)
+
+        # Disconnect signal to avoid triggering on_item_select for every row
+        try:
+            self.tree.itemSelectionChanged.disconnect(self.on_item_select)
+        except TypeError:
+            pass  # Already disconnected
+
+        self.tree.setRowCount(0)  # Clear the table
+
         entries.sort(key=lambda x: x['conlang'].lower())
+
         for entry in entries:
+            row_position = self.tree.rowCount()
+            self.tree.insertRow(row_position)
+
             tags_str = ", ".join(entry.get('tags', []))
-            english = ""
-            for word in range(len(entry["english"])):
-                english += entry["english"][word]
-                if word < len(entry["english"]) - 1:
-                    english += ", "
-            self.tree.insert(
-                "", tk.END, values=(entry["conlang"], english, entry["pos"], tags_str), iid=entry["conlang"]
-            )
+            english_str = ", ".join(entry.get('english', []))
+
+            # Create QTableWidgetItem for each cell
+            conlang_item = QTableWidgetItem(entry["conlang"])
+            english_item = QTableWidgetItem(english_str)
+            pos_item = QTableWidgetItem(entry["pos"])
+            tags_item = QTableWidgetItem(tags_str)
+
+            # Store the conlang word in the first item's data for easy retrieval
+            conlang_item.setData(Qt.ItemDataRole.UserRole, entry["conlang"])
+
+            # Add items to the table
+            self.tree.setItem(row_position, 0, conlang_item)
+            self.tree.setItem(row_position, 1, english_item)
+            self.tree.setItem(row_position, 2, pos_item)
+            self.tree.setItem(row_position, 3, tags_item)
+
+        # Re-enable sorting and reconnect signal
+        self.tree.setSortingEnabled(True)
+        self.tree.itemSelectionChanged.connect(self.on_item_select)
+
+        # Clear details display
+        self.on_item_select()
 
     def update_word_display(self, event=None):
-        # Filters and searches the dictionary, then updates the treeview.
         filtered_list = self.dictionary[:]
 
         # Filter by part of speech
-        filter_class = self.filter_pos_combobox.get()
+        filter_class = self.filter_pos_combobox.currentText()
         if filter_class and filter_class != "All Classes":
             filtered_list = [entry for entry in filtered_list if entry.get('pos') == filter_class]
 
         # Filter by selected tags
-        selected_tag_indices = self.tag_filter_listbox.curselection()
-        if selected_tag_indices:
-            selected_tags = {self.tag_filter_listbox.get(i) for i in selected_tag_indices}
+        selected_tag_items = self.tag_filter_listbox.selectedItems()
+        if selected_tag_items:
+            selected_tags = {item.text() for item in selected_tag_items}
             filtered_list = [entry for entry in filtered_list if selected_tags.issubset(set(entry.get('tags', [])))]
 
         # Filter by search term
-        search_term = self.search_entry.get().strip()
+        search_term = self.search_entry.text().strip().lower()
         if search_term:
-            search_field = self.search_var.get()
-
-            if search_field == "conlang":
-                filtered_list = [entry for entry in filtered_list if search_term.lower() in entry[search_field].lower()]
-            elif search_field == "english":
+            if self.radio_conlang.isChecked():
+                filtered_list = [entry for entry in filtered_list if search_term in entry["conlang"].lower()]
+            elif self.radio_english.isChecked():
                 new_filtered_list = []
                 for entry in filtered_list:
-                    for word in entry[search_field]:
-                        if search_term.lower() in word.lower():
-                            new_filtered_list.append(entry)
-                            break
+                    # Check if search term is in any of the English words
+                    if any(search_term in word.lower() for word in entry.get("english", [])):
+                        new_filtered_list.append(entry)
                 filtered_list = new_filtered_list
 
         self.populate_dictionary_list(filtered_list)
-        self.on_item_select()
 
     def _update_tags(self, tags_list):
         # Update global tags from a list of tags for a word.
@@ -514,26 +875,29 @@ This tab is for your language's documentation.
             self.update_tag_filter_listbox()
 
     def add_word(self):
-        # Adds a new word to the dictionary.
-        conlang_word = self.conlang_entry.get().strip()
-        english_word = self.english_entry.get().strip()
-        pos = self.pos_combobox.get().strip()
-        description = self.description_text.get("1.0", tk.END).strip()
-        tags_list = [t.strip() for t in self.tags_entry.get().strip().split(',') if t.strip()]
+        conlang_word = self.conlang_entry.text().strip()
+        english_words = [e.strip() for e in self.english_entry.text().strip().split(',') if e.strip()]
+        pos = self.pos_combobox.currentText()
+        description = self.description_text.toPlainText().strip()
+        tags_list = [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()]
 
-        if not conlang_word or not english_word:
-            messagebox.showwarning("Input Error", "Conlang and English fields are required.")
+        if not conlang_word or not english_words:
+            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
             return
 
         if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
-            messagebox.showwarning("Duplicate Entry", f"The word '{conlang_word}' already exists.")
+            QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
+            return
+
+        if not pos:
+            QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
             return
 
         self._update_tags(tags_list)
 
         new_entry = {
             "conlang": conlang_word,
-            "english": english_word.split(', '),
+            "english": english_words,
             "pos": pos,
             "description": description,
             "tags": tags_list,
@@ -542,31 +906,40 @@ This tab is for your language's documentation.
         }
         self.dictionary.append(new_entry)
         self.save_dictionary()
-        self.update_word_display()
+        self.update_word_display()  # Refresh list
 
-        self.conlang_entry.delete(0, tk.END)
-        self.english_entry.delete(0, tk.END)
-        self.pos_combobox.set('')
-        self.description_text.delete("1.0", tk.END)
-        self.tags_entry.delete(0, tk.END)
+        # Clear entry forms
+        self.conlang_entry.clear()
+        self.english_entry.clear()
+        self.pos_combobox.setCurrentIndex(-1)
+        self.description_text.clear()
+        self.tags_entry.clear()
 
-        self.tree.selection_set(conlang_word)
-        self.tree.see(conlang_word)
+        # Find and select the new word
+        self.select_word_in_table(conlang_word)
 
         self.refresh_stats_page()
 
     def delete_word(self):
-        # Deletes the selected word and updates etymology links.
-        selected_item = self.tree.selection()
-        if not selected_item:
-            messagebox.showwarning("Selection Error", "Please select a word to delete.")
+        selected_row = self.tree.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Selection Error", "Please select a word to delete.")
             return
 
-        conlang_word = selected_item[0]
+        conlang_word = self.tree.item(selected_row, 0).text()
         entry_to_delete = self.get_entry(conlang_word)
         if not entry_to_delete: return
 
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{conlang_word}'?"):
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete '{conlang_word}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Clean up etymology links
             for root_word in entry_to_delete.get('roots', []):
                 root_entry = self.get_entry(root_word)
                 if root_entry and conlang_word in root_entry.get('derived', []):
@@ -578,80 +951,43 @@ This tab is for your language's documentation.
                     derived_entry['roots'].remove(conlang_word)
 
             self.dictionary.remove(entry_to_delete)
-
             self.save_dictionary()
-            self.update_word_display()
-            messagebox.showinfo("Success", f"Deleted '{conlang_word}'.")
+            self.update_word_display()  # Refreshes and clears selection
+            QMessageBox.information(self, "Success", f"Deleted '{conlang_word}'.")
+            self.refresh_stats_page()
 
-    def edit_word(self, event=None):
-        # Opens a new window to edit the selected word.
-        selected_item_id = self.tree.focus()
-        if not selected_item_id:
-            messagebox.showwarning("Selection Error", "Please select a word to edit.")
+    def edit_word(self):
+        selected_row = self.tree.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Selection Error", "Please select a word to edit.")
             return
 
-        entry_to_edit = self.get_entry(selected_item_id)
+        conlang_word = self.tree.item(selected_row, 0).text()
+        entry_to_edit = self.get_entry(conlang_word)
         if not entry_to_edit:
             return
 
-        editor = tk.Toplevel(self.root)
-        editor.title(f"Edit '{entry_to_edit['conlang']}'")
-        editor.transient(self.root)
-        editor.grab_set()
+        # Open the dialog
+        dialog = EditWordDialog(entry_to_edit, self.word_classes, self)
+        if dialog.exec():  # This blocks until dialog is accepted or rejected
+            # Dialog was accepted (Save clicked)
+            new_data = dialog.new_entry_data
+            if not new_data: return  # Should be caught by dialog, but as a safeguard
 
-        frame = ttk.Frame(editor, padding="15")
-        frame.pack(expand=True, fill=tk.BOTH)
-
-        ttk.Label(frame, text="Conlang Word:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        con_entry = ttk.Entry(frame, width=40)
-        con_entry.grid(row=0, column=1, sticky=tk.EW)
-        con_entry.insert(0, entry_to_edit['conlang'])
-
-        english = ""
-        for word in range(len(entry_to_edit["english"])):
-            english += entry_to_edit["english"][word]
-            if word < len(entry_to_edit["english"]) - 1:
-                english += ", "
-
-        ttk.Label(frame, text="English Translation:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        eng_entry = ttk.Entry(frame, width=40)
-        eng_entry.grid(row=1, column=1, sticky=tk.EW)
-        eng_entry.insert(0, english)
-
-        ttk.Label(frame, text="Part of Speech:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        pos_box = ttk.Combobox(frame, values=self.word_classes, width=38, state='readonly')
-        pos_box.grid(row=2, column=1, sticky=tk.EW)
-        pos_box.set(entry_to_edit['pos'])
-
-        ttk.Label(frame, text="Description:").grid(row=3, column=0, sticky=tk.NW, pady=5)
-        desc_text = tk.Text(frame, width=40, height=7, wrap=tk.WORD)
-        desc_text.grid(row=3, column=1, sticky=tk.EW)
-        desc_text.insert("1.0", entry_to_edit['description'])
-
-        ttk.Label(frame, text="Tags (comma-sep):").grid(row=4, column=0, sticky=tk.W, pady=5)
-        tags_entry = ttk.Entry(frame, width=40)
-        tags_entry.grid(row=4, column=1, sticky=tk.EW)
-        tags_entry.insert(0, ", ".join(entry_to_edit.get('tags', [])))
-
-        frame.columnconfigure(1, weight=1)
-
-        def save_changes():
-            new_conlang = con_entry.get().strip()
             old_conlang = entry_to_edit['conlang']
+            new_conlang = new_data['conlang']
 
+            # Check for duplicate if conlang word changed
             if new_conlang.lower() != old_conlang.lower() and any(
                     e['conlang'].lower() == new_conlang.lower() for e in self.dictionary):
-                messagebox.showerror("Error", "The new conlang word already exists.", parent=editor)
+                QMessageBox.critical(self, "Error", "The new conlang word already exists.")
                 return
 
-            new_tags_list = [t.strip() for t in tags_entry.get().strip().split(',') if t.strip()]
-            self._update_tags(new_tags_list)
+            # Update tags
+            self._update_tags(new_data['tags'])
 
-            entry_to_edit['conlang'] = new_conlang
-            entry_to_edit['english'] = eng_entry.get().strip().split(', ')
-            entry_to_edit['pos'] = pos_box.get().strip()
-            entry_to_edit['description'] = desc_text.get("1.0", tk.END).strip()
-            entry_to_edit['tags'] = new_tags_list
+            # Update the entry in the dictionary list
+            entry_to_edit.update(new_data)
 
             # Update etymology links if conlang word changed
             if new_conlang != old_conlang:
@@ -670,151 +1006,99 @@ This tab is for your language's documentation.
             self.save_dictionary()
             self.update_word_display()
             # Manually update selection to new name
-            self.tree.selection_set(new_conlang)
-            self.tree.see(new_conlang)
-            editor.destroy()
+            self.select_word_in_table(new_conlang)
+            self.refresh_stats_page()
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=10)
-        ttk.Button(btn_frame, text="Save", command=save_changes).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=editor.destroy).pack(side=tk.LEFT, padx=5)
+    def on_item_double_click(self, item):
+        # The item parameter is passed, but edit_word() uses currentRow()
+        self.edit_word()
 
-        self.refresh_stats_page()
-
-    def on_item_double_click(self, event):
-        self.edit_word(event)
-
-    def on_item_select(self, event=None):
-        selected_item_id = self.tree.focus()
+    def on_item_select(self):
+        selected_row = self.tree.currentRow()
         description = ""
         entry = None
 
-        if selected_item_id:
-            entry = self.get_entry(selected_item_id)
+        if selected_row != -1:
+            conlang_word = self.tree.item(selected_row, 0).text()
+            entry = self.get_entry(conlang_word)
             if entry:
                 description = entry.get('description', '')
 
-        self.display_description_text.config(state=tk.NORMAL)
-        self.display_description_text.delete('1.0', tk.END)
-        self.display_description_text.insert('1.0', description)
-        self.display_description_text.config(state=tk.DISABLED)
-
+        self.display_description_text.setText(description)
         self.update_etymology_display(entry)
 
     def clear_filters(self):
-        self.search_entry.delete(0, tk.END)
-        self.filter_pos_combobox.set("All Classes")
-        self.tag_filter_listbox.selection_clear(0, tk.END)
-        self.update_word_display()
+        self.search_entry.clear()
+        self.filter_pos_combobox.setCurrentText("All Classes")
+        self.tag_filter_listbox.clearSelection()
+        self.radio_conlang.setChecked(True)
+        # update_word_display will be triggered by the radio button change
 
     def update_tag_filter_listbox(self):
-        # Refreshes the 'Filter by Tags' listbox with self.all_tags.
-        self.tag_filter_listbox.delete(0, tk.END)
+        # Save current selection
+        selected_tags = {item.text() for item in self.tag_filter_listbox.selectedItems()}
+
+        self.tag_filter_listbox.clear()
+
+        # Repopulate
+        new_items = []
         for tag in sorted(self.all_tags):
-            self.tag_filter_listbox.insert(tk.END, tag)
+            item = QListWidgetItem(tag)
+            self.tag_filter_listbox.addItem(item)
+            if tag in selected_tags:
+                new_items.append(item)
+
+        # Restore selection
+        for item in new_items:
+            item.setSelected(True)
 
     def manage_tags(self):
-        # Opens a Toplevel window to add/remove global tags.
-        manager = tk.Toplevel(self.root)
-        manager.title("Manage Tags")
-        manager.transient(self.root)
-        manager.grab_set()
+        dialog = ManageTagsDialog(self.all_tags, self)
+        dialog.exec()
 
-        frame = ttk.Frame(manager, padding="10")
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        list_frame = ttk.Frame(frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
-        listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, height=15)
-        scrollbar.config(command=listbox.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        for tag in self.all_tags:
-            listbox.insert(tk.END, tag)
-
-        entry_frame = ttk.Frame(frame)
-        entry_frame.pack(fill=tk.X, pady=5)
-
-        entry = ttk.Entry(entry_frame)
-        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-
-        def add_tag():
-            tag = entry.get().strip()
-            if tag and tag not in self.all_tags:
-                self.all_tags.append(tag)
-                self.all_tags.sort()
-                self.save_tags()
-                listbox.delete(0, tk.END)
-                for t in self.all_tags: listbox.insert(tk.END, t)
-                self.update_tag_filter_listbox()
-                entry.delete(0, tk.END)
-
-        add_btn = ttk.Button(entry_frame, text="Add Tag", command=add_tag)
-        add_btn.pack(side=tk.RIGHT)
-
-        def remove_tag():
-            selected_indices = listbox.curselection()
-            if not selected_indices: return
-
-            tag_to_remove = listbox.get(selected_indices[0])
-            if messagebox.askyesno("Confirm Delete",
-                                   f"Really remove '{tag_to_remove}' from the global tag list?\n"
-                                   "(This does NOT remove it from words.)",
-                                   parent=manager):
-                self.all_tags.remove(tag_to_remove)
-                self.save_tags()
-                listbox.delete(selected_indices[0])
-                self.update_tag_filter_listbox()
-
-        remove_btn = ttk.Button(frame, text="Remove Selected Tag", command=remove_tag)
-        remove_btn.pack(fill=tk.X, pady=5)
-
-        close_btn = ttk.Button(frame, text="Close", command=manager.destroy)
-        close_btn.pack(pady=(10, 0))
+        if dialog.tags_changed:
+            self.save_tags()
+            self.update_tag_filter_listbox()
 
     def get_entry(self, conlang_word):
-        # Helper to find a dictionary entry by its conlang word."""
-        return next((item for item in self.dictionary if item["conlang"] == conlang_word), None)
+        # Helper to find a dictionary entry by its conlang word.
+        return next((item for item in self.dictionary if item["conlang"].lower() == conlang_word.lower()), None)
 
     def update_etymology_display(self, entry):
-        # Populates the etymology listboxes based on the selected entry.
-        self.roots_listbox.delete(0, tk.END)
-        self.derived_listbox.delete(0, tk.END)
+        self.roots_listbox.clear()
+        self.derived_listbox.clear()
 
         if entry:
             for root_word in sorted(entry.get('roots', [])):
-                self.roots_listbox.insert(tk.END, root_word)
+                self.roots_listbox.addItem(root_word)
             for derived_word in sorted(entry.get('derived', [])):
-                self.derived_listbox.insert(tk.END, derived_word)
+                self.derived_listbox.addItem(derived_word)
 
     def add_etymology_link(self, link_type):
-        # Adds a new root or derived word link.
-        selected_word_id = self.tree.focus()
-        if not selected_word_id:
-            messagebox.showwarning("No Word Selected", "Please select a word to add a link to.")
+        selected_row = self.tree.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "No Word Selected", "Please select a word to add a link to.")
             return
 
+        selected_word_id = self.tree.item(selected_row, 0).text()
         entry_A = self.get_entry(selected_word_id)
         if not entry_A: return
 
         prompt = f"Enter the conlang word that is a {link_type} of '{selected_word_id}':"
-        word_B_name = simpledialog.askstring("Add Etymology Link", prompt, parent=self.root)
+        word_B_name, ok = QInputDialog.getText(self, "Add Etymology Link", prompt)
 
-        if not word_B_name or word_B_name.strip() == "":
+        if not ok or not word_B_name or word_B_name.strip() == "":
             return
 
         word_B_name = word_B_name.strip()
 
-        if word_B_name == selected_word_id:
-            messagebox.showwarning("Self-Link", "A word cannot be its own root or derivative.")
+        if word_B_name.lower() == selected_word_id.lower():
+            QMessageBox.warning(self, "Self-Link", "A word cannot be its own root or derivative.")
             return
 
         entry_B = self.get_entry(word_B_name)
         if not entry_B:
-            messagebox.showerror("Word Not Found", f"The word '{word_B_name}' does not exist in the dictionary.")
+            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist in the dictionary.")
             return
 
         if link_type == 'root':
@@ -828,22 +1112,23 @@ This tab is for your language's documentation.
         self.update_etymology_display(entry_A)
 
     def remove_etymology_link(self, link_type):
-        # Removes an existing root or derived word link.
-        selected_word_id = self.tree.focus()
-        if not selected_word_id: return
+        selected_row = self.tree.currentRow()
+        if selected_row == -1: return
 
-        entry_A = self.get_entry(selected_word_id)
+        entry_A = self.get_entry(self.tree.item(selected_row, 0).text())
         if not entry_A: return
 
         listbox = self.roots_listbox if link_type == 'root' else self.derived_listbox
-        selected_indices = listbox.curselection()
+        selected_items = listbox.selectedItems()
 
-        if not selected_indices:
-            messagebox.showwarning("No Link Selected", f"Please select a {link_type} word to remove.")
+        if not selected_items:
+            QMessageBox.warning(self, "No Link Selected", f"Please select a {link_type} word to remove.")
             return
 
-        word_B_name = listbox.get(selected_indices[0])
+        word_B_name = selected_items[0].text()
         entry_B = self.get_entry(word_B_name)
+
+        selected_word_id = entry_A['conlang']
 
         if link_type == 'root':
             if word_B_name in entry_A['roots']: entry_A['roots'].remove(word_B_name)
@@ -857,159 +1142,334 @@ This tab is for your language's documentation.
         self.save_dictionary()
         self.update_etymology_display(entry_A)
 
-    def jump_to_word_from_listbox(self, event):
-        # Finds and selects a word in the main tree from an etymology listbox.
-        listbox = event.widget
-        selected_indices = listbox.curselection()
-        if not selected_indices: return
+    def select_word_in_table(self, conlang_word):
+        """Finds and selects a word in the main QTableWidget."""
+        # findItems returns a list of matching items
+        items = self.tree.findItems(conlang_word, Qt.MatchFlag.MatchExactly)
+        if items:
+            # We only care about matches in the first column (col 0)
+            for item in items:
+                if item.column() == 0:
+                    self.tree.setCurrentItem(item)
+                    self.tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
+                    return
 
-        word_to_find = listbox.get(selected_indices[0])
+    def jump_to_word_from_listbox(self, item: QListWidgetItem):
+        word_to_find = item.text()
 
-        if self.tree.exists(word_to_find):
-            self.tree.selection_set(word_to_find)
-            self.tree.see(word_to_find)
-            self.main_notebook.select(self.tab_dictionary)
+        items = self.tree.findItems(word_to_find, Qt.MatchFlag.MatchExactly)
+        if items:
+            # Find the item in column 0
+            for found_item in items:
+                if found_item.column() == 0:
+                    self.tree.setCurrentItem(found_item)
+                    self.tree.scrollToItem(found_item, QAbstractItemView.ScrollHint.EnsureVisible)
+                    self.main_notebook.setCurrentWidget(self.tab_dictionary)
+                    # on_item_select will be triggered by setCurrentItem
+                    return
 
-            selected_item_id = self.tree.focus(word_to_find)
-            description = ""
-            entry = None
-
-            if selected_item_id:
-                entry = self.get_entry(selected_item_id)
-                if entry:
-                    description = entry.get('description', '')
-
-            self.display_description_text.config(state=tk.NORMAL)
-            self.display_description_text.delete('1.0', tk.END)
-            self.display_description_text.insert('1.0', description)
-            self.display_description_text.config(state=tk.DISABLED)
-
-            self.update_etymology_display(entry)
-        else:
-            messagebox.showwarning("Link Error", f"The word '{word_to_find}' seems to be missing.")
+        QMessageBox.warning(self, "Link Error", f"The word '{word_to_find}' seems to be missing or filtered.")
 
     def load_grammar_rules(self):
-        self.grammar_rules_text.delete('1.0', tk.END)
-        self.grammar_rules_text.insert('1.0', self.grammar_data.get('rules', ''))
+        self.grammar_rules_text.setText(self.grammar_data.get('rules', ''))
 
     def save_grammar_rules(self):
-        self.grammar_data['rules'] = self.grammar_rules_text.get('1.0', tk.END).strip()
+        self.grammar_data['rules'] = self.grammar_rules_text.toPlainText().strip()
         self.save_grammar()
-        messagebox.showinfo("Success", "Grammar rules saved.", parent=self.tab_grammar)
+        QMessageBox.information(self, "Success", "Grammar rules saved.")
 
     def update_grammar_table_listbox(self):
-        self.table_listbox.delete(0, tk.END)
+        self.table_listbox.clear()
         for table_name in sorted(self.grammar_data['tables'].keys()):
-            self.table_listbox.insert(tk.END, table_name)
+            self.table_listbox.addItem(table_name)
 
-    def load_table_into_editor(self, event=None):
-        selected_indices = self.table_listbox.curselection()
-        if not selected_indices: return
+    def load_table_into_editor(self):
+        selected_items = self.table_listbox.selectedItems()
 
-        table_name = self.table_listbox.get(selected_indices[0])
-        content = self.grammar_data['tables'].get(table_name, '')
+        # Clear table first
+        self.table_editor.clear()
+        self.table_editor.setRowCount(0)
+        self.table_editor.setColumnCount(0)
 
-        self.table_text_editor.delete('1.0', tk.END)
-        self.table_text_editor.insert('1.0', content)
-
-    def save_grammar_table(self):
-        selected_indices = self.table_listbox.curselection()
-        if not selected_indices:
-            messagebox.showwarning("No Table Selected", "Please select a table to save.", parent=self.tab_grammar)
+        if not selected_items:
             return
 
-        table_name = self.table_listbox.get(selected_indices[0])
-        content = self.table_text_editor.get('1.0', tk.END).strip()
+        table_name = selected_items[0].text()
+        table_data = self.grammar_data['tables'].get(table_name)
 
-        self.grammar_data['tables'][table_name] = content
+        if not table_data or not isinstance(table_data, dict):
+            return
+
+        data = table_data.get("data", [[]])
+        row_headers = table_data.get("row_headers", [])
+        col_headers = table_data.get("col_headers", [])
+
+        num_rows = len(data)
+        num_cols = len(data[0]) if num_rows > 0 else 0
+
+        self.table_editor.setRowCount(num_rows)
+        self.table_editor.setColumnCount(num_cols)
+
+        self.table_editor.setVerticalHeaderLabels(row_headers)
+        self.table_editor.setHorizontalHeaderLabels(col_headers)
+
+        for r_idx, row in enumerate(data):
+            # Ensure row has correct number of columns (for data integrity)
+            if len(row) != num_cols:
+                row.extend([""] * (num_cols - len(row)))
+
+            for c_idx, cell_content in enumerate(row):
+                self.table_editor.setItem(r_idx, c_idx, QTableWidgetItem(str(cell_content)))
+
+    def save_grammar_table(self):
+        selected_items = self.table_listbox.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Table Selected", "Please select a table to save.")
+            return
+
+        table_name = selected_items[0].text()
+
+        num_rows = self.table_editor.rowCount()
+        num_cols = self.table_editor.columnCount()
+
+        new_data = []
+        new_row_headers = []
+        new_col_headers = []
+
+        for r in range(num_rows):
+            row_data = []
+            header_item = self.table_editor.verticalHeaderItem(r)
+            new_row_headers.append(header_item.text() if header_item else str(r + 1))
+
+            for c in range(num_cols):
+                item = self.table_editor.item(r, c)
+                row_data.append(item.text() if item and item.text() is not None else "")
+            new_data.append(row_data)
+
+        for c in range(num_cols):
+            header_item = self.table_editor.horizontalHeaderItem(c)
+            new_col_headers.append(header_item.text() if header_item else f"Col {c + 1}")
+
+        table_object = {
+            "data": new_data,
+            "row_headers": new_row_headers,
+            "col_headers": new_col_headers
+        }
+
+        self.grammar_data['tables'][table_name] = table_object
         self.save_grammar()
-        messagebox.showinfo("Success", f"Table '{table_name}' saved.", parent=self.tab_grammar)
+        QMessageBox.information(self, "Success", f"Table '{table_name}' saved.")
 
     def create_grammar_table(self):
-        table_name = simpledialog.askstring("Create Table", "Enter a name for the new table:", parent=self.tab_grammar)
+        table_name, ok = QInputDialog.getText(self, "Create Table", "Enter a name for the new table:")
 
-        if not table_name or table_name.strip() == "":
+        if not ok or not table_name or table_name.strip() == "":
             return
 
         table_name = table_name.strip()
 
-        if table_name in self.grammar_data['tables']:
-            messagebox.showwarning("Duplicate", f"A table named '{table_name}' already exists.",
-                                   parent=self.tab_grammar)
+        # Check if table name already exists in the listbox
+        existing_tables = [self.table_listbox.item(i).text() for i in range(self.table_listbox.count())]
+        if table_name in existing_tables:
+            QMessageBox.warning(self, "Duplicate", f"A table named '{table_name}' already exists.")
             return
 
-        self.grammar_data['tables'][table_name] = f"# Table: {table_name}\n(Enter your table data here)"
+        num_rows, ok_r = QInputDialog.getInt(self, "Create Table", "Enter number of rows:", 3, 1, 100)
+        if not ok_r: return
+        num_cols, ok_c = QInputDialog.getInt(self, "Create Table", "Enter number of columns:", 3, 1, 100)
+        if not ok_c: return
+
+        default_data = [["" for _ in range(num_cols)] for _ in range(num_rows)]
+        default_row_headers = [str(i + 1) for i in range(num_rows)]
+        default_col_headers = [f"Header {i + 1}" for i in range(num_cols)]
+
+        new_table = {
+            "data": default_data,
+            "row_headers": default_row_headers,
+            "col_headers": default_col_headers
+        }
+
+        self.grammar_data['tables'][table_name] = new_table
         self.save_grammar()
 
         self.update_grammar_table_listbox()
-        try:
-            index = list(self.table_listbox.get(0, tk.END)).index(table_name)
-            self.table_listbox.selection_set(index)
-            self.load_table_into_editor()
-        except ValueError:
-            pass
+
+        # Find and select the new table
+        items = self.table_listbox.findItems(table_name, Qt.MatchFlag.MatchExactly)
+        if items:
+            self.table_listbox.setCurrentItem(items[0])
+            # load_table_into_editor will be called by the selection signal
 
     def delete_grammar_table(self):
-        selected_indices = self.table_listbox.curselection()
-        if not selected_indices:
-            messagebox.showwarning("No Table Selected", "Please select a table to delete.", parent=self.tab_grammar)
+        selected_items = self.table_listbox.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "No Table Selected", "Please select a table to delete.")
             return
 
-        table_name = self.table_listbox.get(selected_indices[0])
+        table_name = selected_items[0].text()
 
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the table '{table_name}'?",
-                               parent=self.tab_grammar):
-            del self.grammar_data['tables'][table_name]
-            self.save_grammar()
-            self.update_grammar_table_listbox()
-            self.table_text_editor.delete('1.0', tk.END)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete the table '{table_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        del self.grammar_data['tables'][table_name]
+        self.save_grammar()
+        self.update_grammar_table_listbox()  # This will clear selection
+        self.table_editor.clear()  # Clear table
+        self.table_editor.setRowCount(0)
+        self.table_editor.setColumnCount(0)
 
     def refresh_stats_page(self):
-        self.stats_text.config(state=tk.NORMAL)
-
         total_words = len(self.dictionary)
-        parts_of_speech = dict(zip(self.word_classes, [0 for x in range(len(self.word_classes))]))
-        tags = dict(zip(self.all_tags, [0 for x in range(len(self.all_tags))]))
+
+        # Initialize counts
+        parts_of_speech = {pos: 0 for pos in self.word_classes}
+        tags = {tag: 0 for tag in self.all_tags}
+
         root_words = 0
         terminal_words = 0
 
         for word in self.dictionary:
-            parts_of_speech[word["pos"]] += 1
+            pos = word.get("pos", "Other")
+            if pos in parts_of_speech:
+                parts_of_speech[pos] += 1
 
-            for tag in word["tags"]:
-                tags[tag] += 1
+            for tag in word.get("tags", []):
+                if tag in tags:
+                    tags[tag] += 1
 
-            if not word["roots"]:
+            if not word.get("roots", []):
                 root_words += 1
 
-            if not word["derived"]:
+            if not word.get("derived", []):
                 terminal_words += 1
 
-        stats_text_content = f"Total Words: {total_words}\nRoot Words: {root_words}\nTerminal Words: {terminal_words}\n\n== Parts of Speech ==\n"
+        stats_lines = []
+        stats_lines.append(f"Total Words: {total_words}")
+        stats_lines.append(f"Root Words: {root_words} (no roots)")
+        stats_lines.append(f"Terminal Words: {terminal_words} (no derivatives)")
+        stats_lines.append("\n== Parts of Speech ==")
 
-        for pos in parts_of_speech.keys():
-            if pos in ["Suffix", "Prefix"]:
-                stats_text_content += f"{pos}es: {parts_of_speech[pos]}\n"
-            elif pos == "Other":
-                stats_text_content += f"{pos}: {parts_of_speech[pos]}\n"
-            else:
-                stats_text_content += f"{pos}s: {parts_of_speech[pos]}\n"
+        for pos, count in parts_of_speech.items():
+            if count > 0:
+                stats_lines.append(f"{pos}: {count}")
 
-        stats_text_content += "\n== Tags ==\n"
+        stats_lines.append("\n== Tags ==")
 
-        for tag in tags.keys():
-            stats_text_content += f"{tag}: {tags[tag]}\n"
+        for tag, count in sorted(tags.items()):
+            if count > 0:
+                stats_lines.append(f"{tag}: {count}")
 
-        self.stats_text.delete("1.0", tk.END)
-        self.stats_text.insert(tk.END, stats_text_content)
+        self.stats_text.setText("\n".join(stats_lines))
 
-        self.stats_text.config(state=tk.DISABLED)
+    def closeEvent(self, event):
+        # In this app, data is saved automatically or via buttons,
+        # so there's no need to prompt on close.
+        # If we needed to, we'd pop up a QMessageBox here.
+        event.accept()
 
-    def on_closing(self):
-        self.root.destroy()
+    # --- Table editing ---
+
+    def add_table_row(self):
+        current_row = self.table_editor.currentRow()
+        if current_row == -1:
+            # If no row is selected, add to the end
+            current_row = self.table_editor.rowCount()
+
+        self.table_editor.insertRow(current_row)
+
+        # Set default header
+        new_header = QTableWidgetItem(str(current_row + 1))
+        self.table_editor.setVerticalHeaderItem(current_row, new_header)
+        # Fix subsequent headers
+        for r in range(current_row + 1, self.table_editor.rowCount()):
+            self.table_editor.setVerticalHeaderItem(r, QTableWidgetItem(str(r + 1)))
+
+    def remove_table_row(self):
+        current_row = self.table_editor.currentRow()
+        if current_row != -1:
+            self.table_editor.removeRow(current_row)
+            # Fix subsequent headers
+            for r in range(current_row, self.table_editor.rowCount()):
+                self.table_editor.setVerticalHeaderItem(r, QTableWidgetItem(str(r + 1)))
+
+    def add_table_column(self):
+        current_col = self.table_editor.currentColumn()
+        if current_col == -1:
+            # If no col is selected, add to the end
+            current_col = self.table_editor.columnCount()
+
+        self.table_editor.insertColumn(current_col)
+
+        # Set default header
+        new_header = QTableWidgetItem(f"Header {current_col + 1}")
+        self.table_editor.setHorizontalHeaderItem(current_col, new_header)
+        # Fix subsequent headers
+        for c in range(current_col + 1, self.table_editor.columnCount()):
+            self.table_editor.setHorizontalHeaderItem(c, QTableWidgetItem(f"Header {c + 1}"))
+
+    def remove_table_column(self):
+        current_col = self.table_editor.currentColumn()
+        if current_col != -1:
+            self.table_editor.removeColumn(current_col)
+            # Fix subsequent headers
+            for c in range(current_col, self.table_editor.columnCount()):
+                self.table_editor.setHorizontalHeaderItem(c, QTableWidgetItem(f"Header {c + 1}"))
+
+    def edit_table_header(self, logical_index):
+        sender = self.sender()
+
+        if sender == self.table_editor.horizontalHeader():
+            header_item = self.table_editor.horizontalHeaderItem(logical_index)
+            old_text = header_item.text() if header_item else f"Header {logical_index + 1}"
+            new_text, ok = QInputDialog.getText(self, "Edit Header", "Enter new column header:", text=old_text)
+
+            if ok and new_text:
+                self.table_editor.setHorizontalHeaderItem(logical_index, QTableWidgetItem(new_text))
+
+        elif sender == self.table_editor.verticalHeader():
+            header_item = self.table_editor.verticalHeaderItem(logical_index)
+            old_text = header_item.text() if header_item else str(logical_index + 1)
+            new_text, ok = QInputDialog.getText(self, "Edit Header", "Enter new row header:", text=old_text)
+
+            if ok and new_text:
+                self.table_editor.setVerticalHeaderItem(logical_index, QTableWidgetItem(new_text))
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ConlangDictionaryApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+
+    # Apply a simple stylesheet for a cleaner look
+    app.setStyleSheet("""
+        QWidget {
+            font-size: 10pt;
+        }
+        QGroupBox {
+            font-weight: bold;
+            font-size: 11pt;
+            margin-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            padding: 0 5px 5px 5px;
+        }
+        QPushButton {
+            padding: 5px 10px;
+        }
+        QTableWidget {
+            gridline-color: #ddd;
+        }
+        QHeaderView::section {
+            padding: 4px;
+            border: 1px solid #ddd;
+            font-weight: bold;
+        }
+    """)
+
+    main_window = ConlangDictionaryApp()
+    main_window.show()
+    sys.exit(app.exec())

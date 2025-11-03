@@ -558,7 +558,9 @@ class ConlangDictionaryApp(QMainWindow):
         self.tree.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tree.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.tree.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.tree.horizontalHeader().setMinimumSectionSize(120)
         self.tree.setSortingEnabled(True)
+        self.tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
         self.tree.itemSelectionChanged.connect(self.on_item_select)
         self.tree.itemDoubleClicked.connect(self.on_item_double_click)

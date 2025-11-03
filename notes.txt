@@ -1,0 +1,5 @@
+Just thought processes put into words.
+
+I'm thinking about adding another page called File or maybe Project and having some settings there.  Like being able to
+rename the project, change to a different project, import/export, etc.  Pretty much where I will put all the I/O for the
+new and future technical or non-conlang features.

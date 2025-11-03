@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, simpledialog
 import json
 import os
 
+# Current Code on Microsoft Store
 
 class ConlangDictionaryApp:
     # A GUI application for creating, managing, and searching a dictionary for a constructed language.

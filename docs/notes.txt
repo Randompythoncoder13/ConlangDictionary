@@ -3,3 +3,8 @@ Just thought processes put into words.
 I'm thinking about adding another page called File or maybe Project and having some settings there.  Like being able to
 rename the project, change to a different project, import/export, etc.  Pretty much where I will put all the I/O for the
 new and future technical or non-conlang features.
+
+The main dictionary page is getting crowded and I can't really shove more stuff onto it.  But I want to add things like
+pronunciation, different conjugations, etc.  I could display them in the description area as their own section there,
+but there's no room to add more inputs.  Maybe change the format?  Have the dictionary be across the screen with sorting
+and description at the bottom with a button to add a word making a pop-up dialog window appear.

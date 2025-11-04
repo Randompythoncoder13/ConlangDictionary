@@ -1,5 +1,12 @@
 2.0.0 Update: In Progress
-Multiple Projects: Completed
-Custom Parts of Speech: Not Started
+Multiple Projects: Logic Completed (Needs button)
+File Page: Not Started
+Custom Parts of Speech: In Progress
 Import/Export CSV: Not Started
+Import/Export Project as ZIP: Not Started
 Word Generator (https://kozuka.kmwc.org/): Not Started
+
+2.1.0 Update: Planned
+IPA Pronunciation
+Individual Word Conjugation
+Custom Alphabet (Maybe, this might get pushed back to a later update depending on how complex it turns out to be.)

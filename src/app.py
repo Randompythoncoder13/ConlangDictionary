@@ -4,7 +4,7 @@ import json
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox,
-    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QCheckBox
+    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
@@ -12,6 +12,7 @@ import shutil
 
 from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog
 from wizards import SetProjectNameUpdateErrorWizard
+from simulated_kozuka_logic import generate_words
 
 
 class ConlangDictionaryApp(QMainWindow):
@@ -458,12 +459,6 @@ class ConlangDictionaryApp(QMainWindow):
         self.num_words_input = QLineEdit("100")
         self.num_words_input.setFixedWidth(80)
         gen_layout.addWidget(self.num_words_input, 0, 1)
-
-        self.new_line_check = QCheckBox("New line each")
-        gen_layout.addWidget(self.new_line_check, 1, 0, 1, 2)
-
-        self.filter_dupes_check = QCheckBox("Filter duplicates")
-        gen_layout.addWidget(self.filter_dupes_check, 2, 0, 1, 2)
 
         generate_button = QPushButton(QIcon.fromTheme("view-refresh"), "Generate")
         generate_button.clicked.connect(self.generate_output)
@@ -1284,7 +1279,27 @@ This tab is for your language's documentation.
         return line
 
     def generate_output(self):
-        pass
+        settings = self.get_settings()
+
+        return generate_words(settings["mainPattern"], settings["patterns"], count=settings["numWords"])
+
+    def get_settings(self):
+        """Collects all settings from the UI into a dictionary."""
+        settings = {
+            "patterns": [],
+            "mainPattern": self.main_pattern_input.text(),
+            "numWords": self.num_words_input.text(),
+        }
+
+        for i in range(self.pattern_rows_layout.count()):
+            row_widget = self.pattern_rows_layout.itemAt(i).widget()
+            name_input = row_widget.findChild(QLineEdit, None, Qt.FindChildOption.FindChildrenRecursively)[0]
+            pattern_input = row_widget.findChild(QLineEdit, None, Qt.FindChildOption.FindChildrenRecursively)[1]
+            settings["patterns"].append({
+                "name": name_input.text(),
+                "pattern": pattern_input.text()
+            })
+        return settings
 
     # --- Table editing ---
 

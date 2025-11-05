@@ -157,32 +157,32 @@ class ManageTagsDialog(QDialog):
 
 class ManagePOSDialog(QDialog):
     """
-    A dialog window for managing the global list of tags.
+    A dialog window for managing the list of Parts of Words.
     """
 
-    def __init__(self, all_tags, parent=None):
+    def __init__(self, pos, parent=None):
         super().__init__(parent)
-        self.all_tags = all_tags  # This is a reference to the main list
-        self.setWindowTitle("Manage Tags")
+        self.pos = pos  # This is a reference to the main list
+        self.setWindowTitle("Manage Parts of Speech")
         self.setModal(True)
         self.setMinimumSize(300, 400)
 
         layout = QVBoxLayout(self)
 
         self.listbox = QListWidget()
-        self.listbox.addItems(sorted(self.all_tags))
+        self.listbox.addItems(sorted(self.pos))
         layout.addWidget(self.listbox)
 
         entry_frame = QHBoxLayout()
         self.entry = QLineEdit()
-        self.entry.setPlaceholderText("Enter new tag...")
-        self.add_btn = QPushButton("Add Tag")
+        self.entry.setPlaceholderText("Enter Part of Speech...")
+        self.add_btn = QPushButton("Add POS")
         self.add_btn.clicked.connect(self.add_tag)
         entry_frame.addWidget(self.entry)
         entry_frame.addWidget(self.add_btn)
         layout.addLayout(entry_frame)
 
-        self.remove_btn = QPushButton("Remove Selected Tag")
+        self.remove_btn = QPushButton("Remove Selected Part of Speech")
         self.remove_btn.clicked.connect(self.remove_tag)
         layout.addWidget(self.remove_btn)
 
@@ -190,37 +190,37 @@ class ManagePOSDialog(QDialog):
         self.close_btn.clicked.connect(self.accept)
         layout.addWidget(self.close_btn)
 
-        self.tags_changed = False
+        self.pos_changed = False
 
     def add_tag(self):
-        tag = self.entry.text().strip()
-        if tag and tag not in self.all_tags:
-            self.all_tags.append(tag)
-            self.all_tags.sort()
+        pos = self.entry.text().strip()
+        if pos and pos not in self.pos:
+            self.pos.append(pos)
+            self.pos.sort()
             self.listbox.clear()
-            self.listbox.addItems(self.all_tags)
+            self.listbox.addItems(self.pos)
             self.entry.clear()
-            self.tags_changed = True
+            self.pos_changed = True
 
     def remove_tag(self):
         selected_items = self.listbox.selectedItems()
         if not selected_items:
             return
 
-        tag_to_remove = selected_items[0].text()
+        pos_to_remove = selected_items[0].text()
         reply = QMessageBox.question(
             self,
             "Confirm Delete",
-            f"Really remove '{tag_to_remove}' from the global tag list?\n"
+            f"Really remove '{pos_to_remove}' from the Parts of Speech list?\n"
             "(This does NOT remove it from words.)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            self.all_tags.remove(tag_to_remove)
+            self.pos.remove(pos_to_remove)
             self.listbox.takeItem(self.listbox.row(selected_items[0]))
-            self.tags_changed = True
+            self.pos_changed = True
 
 
 class OpenProjectDialog(QDialog):

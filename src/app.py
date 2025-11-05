@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import shutil
 
-from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog
+from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog
 from wizards import SetProjectNameUpdateErrorWizard
 
 
@@ -21,13 +21,8 @@ class ConlangDictionaryApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Conlang Dictionary Builder")
+        self.setWindowTitle("Conlang Dictionary")
         self.setGeometry(100, 100, 1100, 800)  # Increased size slightly for PyQt widgets
-
-        self.word_classes = [
-            "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition",
-            "Conjunction", "Interjection", "Prefix", "Suffix", "Other"
-        ]
 
         # --- Data File Setup ---
         # Get application data directory
@@ -55,7 +50,7 @@ class ConlangDictionaryApp(QMainWindow):
 
         # --- Load Data ---
         self.dictionary = self.load_dictionary()
-        self.all_tags = self.load_tags()
+        self.all_tags, self.word_classes = self.load_tags()
         self.grammar_data = self.load_grammar()
 
         # --- Create UI ---
@@ -102,7 +97,15 @@ class ConlangDictionaryApp(QMainWindow):
             return []
         try:
             with open(self.tags_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+
+                if type(data) == list:
+                    return data, [
+                        "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
+                        "Prefix", "Suffix"
+                    ]
+                else:
+                    return data["tags"], data["pos"]
         except (json.JSONDecodeError, IOError) as e:
             QMessageBox.critical(self, "Error Loading Tags", f"Could not read tags file: {e}")
             return []
@@ -111,7 +114,7 @@ class ConlangDictionaryApp(QMainWindow):
         try:
             self.all_tags.sort()
             with open(self.tags_file, 'w', encoding='utf-8') as f:
-                json.dump(self.all_tags, f, ensure_ascii=False, indent=4)
+                json.dump({"tags": self.all_tags, "pos": self.word_classes}, f, ensure_ascii=False, indent=4)
         except IOError as e:
             QMessageBox.critical(self, "Error Saving Tags", f"Could not save to tags file: {e}")
 
@@ -249,6 +252,7 @@ class ConlangDictionaryApp(QMainWindow):
         add_frame_layout.addWidget(add_button, 5, 0, 1, 2)
 
         pos_button = QPushButton("Manage Parts of Speech")
+        pos_button.clicked.connect(self.manage_pos)
         add_frame_layout.addWidget(pos_button, 6, 0, 1, 2)
 
         left_panel_layout.addWidget(add_frame)
@@ -812,11 +816,24 @@ This tab is for your language's documentation.
         for item in new_items:
             item.setSelected(True)
 
+    def update_POS_select_listbox(self):
+        # Save current selection
+        self.pos_combobox.clear()
+        self.pos_combobox.addItems(self.word_classes)
+
     def manage_tags(self):
         dialog = ManageTagsDialog(self.all_tags, self)
         dialog.exec()
 
         if dialog.tags_changed:
+            self.save_tags()
+            self.update_tag_filter_listbox()
+
+    def manage_pos(self):
+        dialog = ManagePOSDialog(self.word_classes, self)
+        dialog.exec()
+
+        if dialog.pos_changed:
             self.save_tags()
             self.update_tag_filter_listbox()
 

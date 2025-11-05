@@ -1,7 +1,7 @@
 2.0.0 Update: In Progress
 Multiple Projects: Logic Completed (Needs button)
 File Page: Not Started
-Custom Parts of Speech: In Progress
+Custom Parts of Speech: Completed
 Import/Export CSV: Not Started
 Import/Export Project as ZIP: Not Started
 Word Generator (https://kozuka.kmwc.org/): Not Started

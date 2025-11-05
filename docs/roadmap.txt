@@ -4,7 +4,7 @@ File Page: Not Started
 Custom Parts of Speech: Completed
 Import/Export CSV: Not Started
 Import/Export Project as ZIP: Not Started
-Word Generator (https://kozuka.kmwc.org/): Not Started
+Word Generator (https://kozuka.kmwc.org/): In Progress
 
 2.1.0 Update: Planned
 IPA Pronunciation

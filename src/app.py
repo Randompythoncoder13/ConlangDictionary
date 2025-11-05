@@ -4,9 +4,10 @@ import json
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox,
-    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem
+    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QCheckBox
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 import shutil
 
 from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog
@@ -195,17 +196,20 @@ class ConlangDictionaryApp(QMainWindow):
 
         # Create tabs
         self.tab_dictionary = QWidget()
+        self.tab_word_generator = QWidget()
         self.tab_grammar = QWidget()
         self.tab_stats = QWidget()
         self.tab_help = QWidget()
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
+        self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
         self.main_notebook.addTab(self.tab_grammar, 'Grammar Appendix')
         self.main_notebook.addTab(self.tab_stats, 'Statistics')
         self.main_notebook.addTab(self.tab_help, 'How To Use / Help')
 
         # Populate tabs
         self.create_dictionary_tab()
+        self.create_word_generator_tab()
         self.create_grammar_tab()
         self.create_statistics_tab()
         self.create_help_tab()
@@ -395,6 +399,93 @@ class ConlangDictionaryApp(QMainWindow):
 
         right_panel_layout.addWidget(self.details_notebook)
         main_layout.addWidget(right_panel, 1)  # Add right panel with stretch factor 1
+
+    def create_word_generator_tab(self):
+        self.error_label = QLabel("")
+        self.error_label.setStyleSheet("color: red; padding: 5px;")
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+
+        main_layout = QHBoxLayout(self.tab_word_generator)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+
+        self.content_layout = QVBoxLayout(scroll_widget)
+        scroll_area.setWidget(scroll_widget)
+        main_layout.addWidget(scroll_area)
+
+        patterns_group = QWidget()
+        patterns_layout = QVBoxLayout(patterns_group)
+        patterns_layout.setContentsMargins(0, 0, 0, 0)
+
+        patterns_title = QLabel("Patterns")
+        title_font = patterns_title.font()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        patterns_title.setFont(title_font)
+        patterns_layout.addWidget(patterns_title)
+
+        # This layout will hold the dynamic pattern rows
+        self.pattern_rows_layout = QVBoxLayout()
+        patterns_layout.addLayout(self.pattern_rows_layout)
+
+        add_pattern_button = QPushButton("+ Add pattern")
+        add_pattern_button.clicked.connect(self.add_pattern_row)
+        patterns_layout.addWidget(add_pattern_button, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        self.content_layout.addWidget(patterns_group)
+        self.content_layout.addWidget(self._create_separator())
+
+        main_pattern_layout = QHBoxLayout()
+        main_pattern_label = QLabel("Main pattern:")
+        self.main_pattern_input = QLineEdit()
+
+        main_pattern_layout.addWidget(main_pattern_label)
+        main_pattern_layout.addWidget(self.main_pattern_input, 1)  # 1 stretch factor
+
+        self.content_layout.addLayout(main_pattern_layout)
+        self.content_layout.addWidget(self._create_separator())
+
+        controls_layout = QHBoxLayout()
+
+        # --- Generating Box ---
+        gen_box = QFrame()
+        gen_box.setFrameShape(QFrame.Shape.StyledPanel)
+        gen_layout = QGridLayout(gen_box)
+
+        gen_layout.addWidget(QLabel("Number of words:"), 0, 0)
+        self.num_words_input = QLineEdit("100")
+        self.num_words_input.setFixedWidth(80)
+        gen_layout.addWidget(self.num_words_input, 0, 1)
+
+        self.new_line_check = QCheckBox("New line each")
+        gen_layout.addWidget(self.new_line_check, 1, 0, 1, 2)
+
+        self.filter_dupes_check = QCheckBox("Filter duplicates")
+        gen_layout.addWidget(self.filter_dupes_check, 2, 0, 1, 2)
+
+        generate_button = QPushButton(QIcon.fromTheme("view-refresh"), "Generate")
+        generate_button.clicked.connect(self.generate_output)
+        gen_layout.addWidget(generate_button, 3, 0, 1, 2)
+
+        gen_layout.setColumnStretch(2, 1)  # Add stretch to the right
+
+        controls_layout.addWidget(gen_box, 1)  # 1 stretch factor
+
+        self.content_layout.addLayout(controls_layout)
+        self.content_layout.addWidget(self._create_separator())
+
+        self.output_text = QTextEdit()
+        self.output_text.setReadOnly(True)
+        self.output_text.setPlaceholderText("Generated output will appear here.")
+        self.output_text.setFixedHeight(150)
+        self.content_layout.addWidget(self.output_text)
+
+        self.add_pattern_row()
+        self.add_pattern_row()
+
+        self.content_layout.addStretch()
 
     def create_grammar_tab(self):
         # Use a splitter to allow resizing
@@ -1147,6 +1238,53 @@ This tab is for your language's documentation.
         # so there's no need to prompt on close.
         # If we needed to, we'd pop up a QMessageBox here.
         event.accept()
+
+    def add_pattern_row(self):
+        """Adds a new pattern row (name, pattern, remove button) to the layout."""
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("Name")
+
+        pattern_input = QLineEdit()
+        pattern_input.setPlaceholderText("Pattern")
+
+        remove_button = QPushButton("- Remove")
+
+        # Connect the remove button to a lambda that removes its parent widget
+        remove_button.clicked.connect(lambda: self.remove_pattern_row(row_widget))
+
+        row_layout.addWidget(name_input, 1)  # 1 stretch factor
+        row_layout.addWidget(pattern_input, 3)  # 3 stretch factor
+        row_layout.addWidget(remove_button)
+
+        self.pattern_rows_layout.addWidget(row_widget)
+
+    def remove_pattern_row(self, row_widget):
+        """Removes a specific pattern row widget."""
+        # Check if it's the last row, if so, don't remove
+        if self.pattern_rows_layout.count() > 1:
+            self.pattern_rows_layout.removeWidget(row_widget)
+            row_widget.deleteLater()
+        else:
+            self.show_error("You must have at least one pattern.")
+
+    def show_error(self, message):
+        """Displays an error message in the error label."""
+        self.error_label.setText(message)
+        self.error_label.show()
+
+    def _create_separator(self):
+        """Helper to create a horizontal separator line."""
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        return line
+
+    def generate_output(self):
+        pass
 
     # --- Table editing ---
 

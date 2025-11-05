@@ -8,3 +8,7 @@ The main dictionary page is getting crowded and I can't really shove more stuff 
 pronunciation, different conjugations, etc.  I could display them in the description area as their own section there,
 but there's no room to add more inputs.  Maybe change the format?  Have the dictionary be across the screen with sorting
 and description at the bottom with a button to add a word making a pop-up dialog window appear.
+
+The word generator is going to be a pain to do.  String parsing is the worst.  Luckily since this is just going to be a
+photocopy of Kozuka, so I just have to implement the logic as outlined on the site.  I'll probably find some string
+parser/processor library.

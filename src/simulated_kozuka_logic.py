@@ -173,6 +173,8 @@ def generate_words(main_pattern, definitions_list, count=1):
         list: A list of generated word strings.
     """
 
+    print("called")
+
     # Convert list of dicts to a single dict for easier lookup
     definitions = {}
     for d in definitions_list:
@@ -209,6 +211,7 @@ def generate_words(main_pattern, definitions_list, count=1):
         print(f"Warning: Hit max attempts ({attempts}). Could only generate {len(generated_words)} words.")
         print("This may be due to overly restrictive filters.")
 
+    print("completed")
     return generated_words
 
 
@@ -226,8 +229,8 @@ if __name__ == "__main__":
 
     # 2. Complex nested example
     print("--- Complex Nested Example ---")
-    complex_defs = [{"C": "p/t/k"}, {"V": "a/e/i"}]
-    complex_pattern = "[p/t]a(a*2/e/i){C}{V}({C}{V}({C}))"
+    complex_defs = [{"C": "p/t/k/b/c/d/f/g/h/j/k"}, {"V": "a/e/i/o/u"}]
+    complex_pattern = "(({C})({V})){C}{V}({V}){C}(({C}){V}({C}))"
     print(f"Pattern: {complex_pattern}")
     print(f"Definitions: {complex_defs}")
     print("Generated words:")

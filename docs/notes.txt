@@ -1,4 +1,4 @@
-Just thought processes put into words.
+Just thought processes put into words.  And now its a log ig.
 
 I'm thinking about adding another page called File or maybe Project and having some settings there.  Like being able to
 rename the project, change to a different project, import/export, etc.  Pretty much where I will put all the I/O for the
@@ -12,3 +12,7 @@ and description at the bottom with a button to add a word making a pop-up dialog
 The word generator is going to be a pain to do.  String parsing is the worst.  Luckily since this is just going to be a
 photocopy of Kozuka, so I just have to implement the logic as outlined on the site.  I'll probably find some string
 parser/processor library.
+
+11/5/2025 - 9:12pm
+Word generator should be done.  Debugging it was a nightmare.  Talk about integration hell.  Theres possibly more issue
+so I'll more thoroughly test it latter.

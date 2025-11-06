@@ -87,6 +87,78 @@ class EditWordDialog(QDialog):
         self.accept()  # Close the dialog
 
 
+class AddWordFromGenDialog(QDialog):
+    def __init__(self, word, word_classes, parent=None):
+        super().__init__(parent)
+        self.word = word
+        self.word_classes = word_classes
+        self.new_entry_data = None
+
+        self.setWindowTitle(f"Add Word")
+        self.setModal(True)
+        self.setMinimumWidth(450)
+
+        layout = QGridLayout(self)
+        self.setLayout(layout)
+
+        # Form fields
+        layout.addWidget(QLabel("Conlang Word:"), 0, 0)
+        self.con_entry = QLineEdit()
+        self.con_entry.setText(word)
+        layout.addWidget(self.con_entry, 0, 1)
+
+        layout.addWidget(QLabel("English Translation:"), 1, 0)
+        self.eng_entry = QLineEdit()
+        self.eng_entry.setPlaceholderText("e.g., set, place")
+        layout.addWidget(self.eng_entry, 1, 1)
+
+        layout.addWidget(QLabel("Part of Speech:"), 2, 0)
+        self.pos_box = QComboBox()
+        self.pos_box.addItems(self.word_classes)
+        self.pos_box.setCurrentIndex(-1)
+        layout.addWidget(self.pos_box, 2, 1)
+
+        layout.addWidget(QLabel("Description:"), 3, 0, Qt.AlignmentFlag.AlignTop)
+        self.desc_text = QTextEdit()
+        self.desc_text.setMinimumHeight(100)
+        layout.addWidget(self.desc_text, 3, 1)
+
+        # Join tags back into a comma-separated string
+        layout.addWidget(QLabel("Tags (comma-sep):"), 4, 0)
+        self.tags_entry = QLineEdit()
+        self.tags_entry.setPlaceholderText("e.g., informal, tech")
+        layout.addWidget(self.tags_entry, 4, 1)
+
+        # Buttons
+        button_box = QHBoxLayout()
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_changes)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)  # Closes the dialog
+
+        button_box.addStretch()
+        button_box.addWidget(self.save_button)
+        button_box.addWidget(self.cancel_button)
+        layout.addLayout(button_box, 5, 0, 1, 2)
+
+    def save_changes(self):
+        # Package up the data for the main window to process
+        self.new_entry_data = {
+            "conlang": self.con_entry.text().strip(),
+            "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
+            "pos": self.pos_box.currentText(),
+            "description": self.desc_text.toPlainText().strip(),
+            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()]
+        }
+
+        if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
+            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+            self.new_entry_data = None  # Invalidate data
+            return
+
+        self.accept()  # Close the dialog
+
+
 class ManageTagsDialog(QDialog):
     """
     A dialog window for managing the global list of tags.

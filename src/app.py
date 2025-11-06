@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 import shutil
 
-from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog
+from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordFromGenDialog
 from wizards import SetProjectNameUpdateErrorWizard
 from simulated_kozuka_logic import generate_words
 
@@ -471,11 +471,14 @@ class ConlangDictionaryApp(QMainWindow):
         self.content_layout.addLayout(controls_layout)
         self.content_layout.addWidget(self._create_separator())
 
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        self.output_text.setPlaceholderText("Generated output will appear here.")
-        self.output_text.setFixedHeight(150)
-        self.content_layout.addWidget(self.output_text)
+        output_layout = QHBoxLayout()
+
+        self.gen_output_listbox = QListWidget()
+        self.gen_output_listbox.itemDoubleClicked.connect(self.make_word_from_gen)
+        output_layout.addWidget(self.gen_output_listbox)
+
+        self.content_layout.addLayout(output_layout)
+        self.content_layout.addWidget(self._create_separator())
 
         self.add_pattern_row()
         self.add_pattern_row()
@@ -1281,25 +1284,80 @@ This tab is for your language's documentation.
     def generate_output(self):
         settings = self.get_settings()
 
-        return generate_words(settings["mainPattern"], settings["patterns"], count=settings["numWords"])
+        for word in sorted(generate_words(settings["mainPattern"], settings["patterns"], count=settings["numWords"])):
+            self.gen_output_listbox.addItem(word)
 
     def get_settings(self):
         """Collects all settings from the UI into a dictionary."""
         settings = {
             "patterns": [],
             "mainPattern": self.main_pattern_input.text(),
-            "numWords": self.num_words_input.text(),
+            "numWords": int(self.num_words_input.text()),
         }
 
         for i in range(self.pattern_rows_layout.count()):
             row_widget = self.pattern_rows_layout.itemAt(i).widget()
-            name_input = row_widget.findChild(QLineEdit, None, Qt.FindChildOption.FindChildrenRecursively)[0]
-            pattern_input = row_widget.findChild(QLineEdit, None, Qt.FindChildOption.FindChildrenRecursively)[1]
-            settings["patterns"].append({
-                "name": name_input.text(),
-                "pattern": pattern_input.text()
-            })
+
+            # 1. Use findChildren (plural) ONCE to get a list of all QLineEdits
+            all_line_edits = row_widget.findChildren(QLineEdit, None, Qt.FindChildOption.FindChildrenRecursively)
+
+            # 2. Now access the items from the list
+            # (It's much safer to check the length first!)
+            if len(all_line_edits) >= 2:
+                name_input = all_line_edits[0]
+                pattern_input = all_line_edits[1]
+
+                settings["patterns"].append({
+                    name_input.text(): pattern_input.text()
+                })
+            else:
+                print(f"Warning: Row {i} did not contain two QLineEdit widgets.")
+
         return settings
+
+    def make_word_from_gen(self, item: QListWidgetItem):
+        word = item.text()
+
+        # Open the dialog
+        dialog = AddWordFromGenDialog(word, self.word_classes, self)
+        if dialog.exec():  # This blocks until dialog is accepted or rejected
+            # Dialog was accepted (Save clicked)
+            new_data = dialog.new_entry_data
+
+            conlang_word = new_data["conlang"]
+            english_words = new_data["english"]
+            pos = new_data["pos"]
+            description = new_data["description"]
+            tags_list = new_data["tags"]
+
+            if not conlang_word or not english_words:
+                QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+                return
+
+            if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
+                QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
+                return
+
+            if not pos:
+                QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
+                return
+
+            self._update_tags(tags_list)
+
+            new_entry = {
+                "conlang": conlang_word,
+                "english": english_words,
+                "pos": pos,
+                "description": description,
+                "tags": tags_list,
+                "roots": [],
+                "derived": []
+            }
+            self.dictionary.append(new_entry)
+            self.save_dictionary()
+            self.update_word_display()  # Refresh list
+
+            self.refresh_stats_page()
 
     # --- Table editing ---
 

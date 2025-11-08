@@ -2,7 +2,7 @@ import sys
 import os
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
-    QMessageBox, QDialog
+    QMessageBox, QDialog, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt
 
@@ -296,9 +296,10 @@ class ManagePOSDialog(QDialog):
 
 
 class OpenProjectDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, flag=False):
         super().__init__(parent)
         self.info_parent = parent
+        self.flag = flag
 
         self.setWindowTitle("Open/Create Project")
         self.setModal(True)
@@ -330,21 +331,27 @@ class OpenProjectDialog(QDialog):
         layout.addWidget(bottom_box)
 
     def fetch_projects(self):
-        return os.listdir(self.info_parent.app_data_dir)
+        if self.flag:
+            return os.listdir(self.info_parent.app_data_master_dir)
+        else:
+            return os.listdir(self.info_parent.app_data_dir)
 
     def open_project(self):
         if self.project_select.currentText() == "":
             return
 
-        self.info_parent.dictionary_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_dictionary.json")
-        )
-        self.info_parent.tags_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_tags.json")
-        )
-        self.info_parent.grammar_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_select.currentText(), "conlang_grammar.json")
-        )
+        if self.flag:
+            self.info_parent.app_data_dir = os.path.join(
+                self.info_parent.app_data_master_dir, self.project_select.currentText()
+            )
+        else:
+            self.info_parent.app_data_dir = os.path.join(
+                self.info_parent.app_data_dir, self.project_select.currentText()
+            )
+
+        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
+        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
+        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
 
         self.accept()
 
@@ -352,18 +359,134 @@ class OpenProjectDialog(QDialog):
         if self.project_create.text().strip() == "":
             return
 
+        if self.flag:
+            self.info_parent.app_data_dir = os.path.join(
+                self.info_parent.app_data_master_dir, self.project_select.currentText()
+            )
+        else:
+            self.info_parent.app_data_dir = os.path.join(
+                self.info_parent.app_data_dir, self.project_select.currentText()
+            )
+
         os.makedirs(os.path.join(self.info_parent.app_data_dir, self.project_create.text().strip()), exist_ok=True)
-        self.info_parent.dictionary_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_dictionary.json")
-        )
-        self.info_parent.tags_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_tags.json")
-        )
-        self.info_parent.grammar_file = os.path.join(
-            self.info_parent.app_data_dir, os.path.join(self.project_create.text().strip(), "conlang_grammar.json")
-        )
+        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
+        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
+        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
 
         self.accept()
 
     def closeEvent(self, event):
-        sys.exit()
+        if self.flag:
+            self.accept()
+        else:
+            sys.exit()
+
+
+class RenameProjectDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.info_parent = parent
+
+        self.setWindowTitle("Rename Project")
+        self.setModal(True)
+        self.setMinimumSize(300, 400)
+
+        layout = QVBoxLayout(self)
+        box = QGroupBox("Rename Project")
+        frame = QGridLayout(box)
+
+        self.project_name = QLineEdit()
+        frame.addWidget(self.project_name, 0, 0)
+
+        top_submit = QPushButton("Rename")
+        top_submit.clicked.connect(self.rename_project)
+        frame.addWidget(top_submit, 1, 0)
+
+        layout.addWidget(box)
+
+    def rename_project(self):
+        if self.project_name.text().strip() == "":
+            return
+
+        new_location = os.path.join(self.info_parent.app_data_master_dir, self.project_name.text().strip())
+
+        os.rename(self.info_parent.app_data_dir, new_location)
+        self.info_parent.app_data_dir = new_location
+
+        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
+        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
+        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
+
+        self.accept()
+
+
+class WarningDialog(QDialog):
+    def __init__(self, message, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("WARNING!")
+
+        QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        message = QLabel(message)
+        layout.addWidget(message)
+        layout.addWidget(self.buttonBox)
+        self.setLayout(layout)
+
+
+class SecondaryCheckDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("ARE YOU SURE?!?")
+
+        layout = QVBoxLayout()
+
+        QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+
+        layout.addWidget(QLabel("Type \"CONFIRM\" to proceed with the action."))
+
+        self.entry_field = QLineEdit()
+        layout.addWidget(self.entry_field)
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.check_confirm)
+        self.buttonBox.rejected.connect(self.reject)
+        layout.addWidget(self.buttonBox)
+
+        self.setLayout(layout)
+
+    def check_confirm(self):
+        if self.entry_field.text().strip().lower() == "confirm":
+           self.accept()
+
+
+class ImportantWarningDialog(QDialog):
+    def __init__(self, message, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("WARNING!")
+
+        QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+
+        self.buttonBox = QDialogButtonBox(QBtn)
+        self.buttonBox.accepted.connect(self.run_check)
+        self.buttonBox.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        message = QLabel(message)
+        layout.addWidget(message)
+        layout.addWidget(self.buttonBox)
+        self.setLayout(layout)
+
+    def run_check(self):
+        dialog = SecondaryCheckDialog(self)
+        if dialog.exec():
+            self.accept()
+        else:
+            self.reject()

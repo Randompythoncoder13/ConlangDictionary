@@ -1,18 +1,25 @@
 import sys
 import os
 import json
+import csv
+import shutil
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox,
-    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame
+    QInputDialog, QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QFileDialog,
+    QErrorMessage
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
-import shutil
+from PyQt6.QtGui import QIcon, QAction
 
-from dialogs import EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordFromGenDialog
-from wizards import SetProjectNameUpdateErrorWizard
-from simulated_kozuka_logic import generate_words
+from src.dialogs import (
+    EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordFromGenDialog,
+    RenameProjectDialog, ImportantWarningDialog
+)
+from src.wizards import SetProjectNameUpdateErrorWizard
+from src.simulated_kozuka_logic import generate_words
+from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder
 
 
 class ConlangDictionaryApp(QMainWindow):
@@ -34,6 +41,7 @@ class ConlangDictionaryApp(QMainWindow):
                 app_data_path = os.path.expanduser("~/.local/share")  # Fallback for Linux
 
             self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")
+            self.app_data_master_dir = self.app_data_dir
             os.makedirs(self.app_data_dir, exist_ok=True)
 
         except OSError as e:
@@ -96,7 +104,10 @@ class ConlangDictionaryApp(QMainWindow):
 
     def load_tags(self):
         if not os.path.exists(self.tags_file):
-            return []
+            return [], [
+                "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
+                "Prefix", "Suffix"
+            ]
         try:
             with open(self.tags_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -110,7 +121,10 @@ class ConlangDictionaryApp(QMainWindow):
                     return data["tags"], data["pos"]
         except (json.JSONDecodeError, IOError) as e:
             QMessageBox.critical(self, "Error Loading Tags", f"Could not read tags file: {e}")
-            return []
+            return [], [
+                "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
+                "Prefix", "Suffix"
+            ]
 
     def save_tags(self):
         try:
@@ -171,7 +185,7 @@ class ConlangDictionaryApp(QMainWindow):
             if wizard.exec():
                 name = wizard.field("name")
 
-                new_location = os.path.join(self.app_data_dir, name)
+                new_location = os.path.join(self.app_data_master_dir, name)
                 os.makedirs(new_location, exist_ok=True)
 
                 if os.path.exists(self.dictionary_file):
@@ -189,11 +203,15 @@ class ConlangDictionaryApp(QMainWindow):
                     shutil.move(self.grammar_file, new_location)
                     self.grammar_file = new_grammar_path
 
+                self.app_data_dir = new_location
+
     # --- UI Creation Methods ---
 
     def create_widgets(self):
         self.main_notebook = QTabWidget()
         self.setCentralWidget(self.main_notebook)
+
+        self.create_menu_bar()
 
         # Create tabs
         self.tab_dictionary = QWidget()
@@ -214,6 +232,39 @@ class ConlangDictionaryApp(QMainWindow):
         self.create_grammar_tab()
         self.create_statistics_tab()
         self.create_help_tab()
+
+    def create_menu_bar(self):
+        self.menu_bar = self.menuBar()
+
+        fileMenu = self.menu_bar.addMenu("&File")
+
+        open_new_action = QAction("Open/New Project", self)
+        open_new_action.triggered.connect(self.open_make_new_project)
+        fileMenu.addAction(open_new_action)
+
+        fileMenu.addSeparator()
+
+        rename = QAction("Rename Project", self)
+        rename.triggered.connect(self.rename_project)
+        fileMenu.addAction(rename)
+
+        delete = QAction("Delete Project", self)
+        delete.triggered.connect(self.delete_project)
+        fileMenu.addAction(delete)
+
+        fileMenu.addSeparator()
+
+        export_csv = QAction("Export as CSV", self)
+        export_csv.triggered.connect(self.save_csv_file)
+        fileMenu.addAction(export_csv)
+
+        export_zip = QAction("Export as ZIP", self)
+        export_zip.triggered.connect(self.export_to_zip)
+        fileMenu.addAction(export_zip)
+
+        import_zip = QAction("Import as ZIP", self)
+        import_zip.triggered.connect(self.import_to_zip)
+        fileMenu.addAction(import_zip)
 
     def create_dictionary_tab(self):
         main_layout = QHBoxLayout(self.tab_dictionary)  # Main layout for the tab
@@ -1358,6 +1409,114 @@ This tab is for your language's documentation.
             self.update_word_display()  # Refresh list
 
             self.refresh_stats_page()
+
+    def open_make_new_project(self):
+        dialog = OpenProjectDialog(self, flag=True)
+        if dialog.exec():
+            self.dictionary = self.load_dictionary()
+            self.all_tags, self.word_classes = self.load_tags()
+            self.grammar_data = self.load_grammar()
+
+            self.update_word_display()
+            self.update_tag_filter_listbox()
+            self.update_grammar_table_listbox()
+            self.load_grammar_rules()
+
+    def rename_project(self):
+        dialog = RenameProjectDialog(self)
+        dialog.exec()
+
+    def delete_project(self):
+        dialog = ImportantWarningDialog("Are you sure you wish to delete this project?", self)
+        if dialog.exec():
+            shutil.rmtree(self.app_data_dir)
+
+        self.open_make_new_project()
+
+    def save_csv_file(self):
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
+
+        if file_name:
+            try:
+                with open(f"{file_name}.csv", "w") as f:
+                    headers = ['conlang', 'english', 'pos', 'description', 'tags', 'roots', 'derived']
+
+                    writer = csv.DictWriter(f, fieldnames=headers)
+
+                    # Write the header row to the CSV
+                    writer.writeheader()
+
+                    # Loop through each word entry in the JSON data
+                    for entry in self.dictionary:
+                        # Create a dictionary for the new CSV row
+                        # Use .get() for safety, providing a default value
+
+                        # For list fields, join them with a '|' character
+                        # For simple fields, just get the value
+                        row_data = {
+                            'conlang': entry.get('conlang', ''),
+                            'english': '|'.join(entry.get('english', [])),
+                            'pos': entry.get('pos', ''),
+                            'description': entry.get('description', ''),
+                            'tags': '|'.join(entry.get('tags', [])),
+                            'roots': '|'.join(entry.get('roots', [])),
+                            'derived': '|'.join(entry.get('derived', []))
+                        }
+
+                        # Write the processed row to the CSV file
+                        writer.writerow(row_data)
+            except Exception as e:
+                error_dialog = QErrorMessage()
+                error_dialog.showMessage(f"Error saving file: {e}")
+
+    def export_to_zip(self):
+        file_name, _ = QFileDialog.getSaveFileName(self, "Export Project", "", "ZIP Files (*.zip)")
+
+        if file_name:
+            try:
+                zip_folder(self.app_data_dir, file_name)
+            except Exception as e:
+                error_dialog = QErrorMessage()
+                error_dialog.showMessage(f"Error exporting project: {e}")
+
+    def import_to_zip(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Import Project", "", "ZIP Files (*.zip)")
+
+        if file_name:
+            try:
+                if file_name.split("/")[-1].split(".")[0] in get_folder_names(self.app_data_master_dir):
+                    dialog = ImportantWarningDialog(
+                        "A project with the same name already exists! Do you wish to replace this project?"
+                    )
+                    if dialog.exec():
+                        clear_folder(os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0]))
+                        unzip_file(
+                            file_name, os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0])
+                        )
+
+                        self.app_data_dir = os.path.join(
+                            self.app_data_master_dir, file_name.split("/")[-1].split(".")[0]
+                        )
+
+                        self.dictionary_file = os.path.join(self.app_data_dir, "conlang_dictionary.json")
+                        self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
+                        self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
+
+                        self.dictionary = self.load_dictionary()
+                        self.all_tags, self.word_classes = self.load_tags()
+                        self.grammar_data = self.load_grammar()
+
+                        self.update_word_display()
+                        self.update_tag_filter_listbox()
+                        self.update_grammar_table_listbox()
+                        self.load_grammar_rules()
+                else:
+                    unzip_file(
+                        file_name, os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0])
+                    )
+            except Exception as e:
+                error_dialog = QErrorMessage()
+                error_dialog.showMessage(f"Error importing project: {e}")
 
     # --- Table editing ---
 

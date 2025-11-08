@@ -16,3 +16,11 @@ parser/processor library.
 11/5/2025 - 9:12pm
 Word generator should be done.  Debugging it was a nightmare.  Talk about integration hell.  Theres possibly more issue
 so I'll more thoroughly test it latter.
+
+11/6/2025 - 4:48pm
+Thought collection for file page:
+So I'm going to have the open/make new project option, rename project, delete project, export project, and import
+project options.
+
+11/6/2025 - 7:30pm
+Changed my mind.  Doing it as a menu bar instead.

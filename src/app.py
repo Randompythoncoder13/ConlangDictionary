@@ -637,6 +637,20 @@ class ConlangDictionaryApp(QMainWindow):
 
 This application helps you create, manage, and explore your constructed language. Here's a quick guide to its features.
 
+== Menu Bar ==
+
+* File:
+    - Open/New Project: Open or create a new conlang project.
+    - Rename Project: Renames the current conlang project.
+    - Delete Project: Deletes the current conlang project.
+    - Export as CSV: Exports just the dictionary as a CSV file.
+    - Export as ZIP: Exports all the project's .json save file in a .zip to move projects to other computers.
+    - Import as ZIP: Opens an exported .zip file and makes a new project with the name of the .zip file and automatically populates it with the data contained in the .zip file.
+
+* Settings:
+    - Darkmode: Sets the program to darkmode and saves this setting.
+    - Lightmode: Sets the program to lightmode and saves this setting.
+
 == Dictionary Tab ==
 
 * Search & Filter:
@@ -664,7 +678,7 @@ This application helps you create, manage, and explore your constructed language
 == Word Generator Tab ==
 
 * Generate Random Words:
-    - Generation Rules/Formatting: This is based on a site called Kozuka made by autumn (https://github.com/auctumnus). It follows the same rules and they already made a very good page explaining them so view rules here: https://kozuka.kmwc.org/help.html
+    - Generation Rules: This is based on a site called Kozuka (creator: https://github.com/auctumnus). It follows the same rules and they already made a very good page explaining them so view rules here: https://kozuka.kmwc.org/help.html
     - Using Output: Double click on one of the generated words to automatically open up an Add Word window with it autofilled into the conlang field.
 
 == Grammar Appendix Tab ==

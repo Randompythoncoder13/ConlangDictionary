@@ -1,4 +1,4 @@
-2.0.0 Update: In Bug Testing
+2.0.0 Update: Completed
 Multiple Projects: Completed
 File Page: Completed
 Custom Parts of Speech: Completed
@@ -8,5 +8,5 @@ Word Generator (https://kozuka.kmwc.org/): Completed
 
 2.1.0 Update: Planned
 IPA Pronunciation
-Individual Word Conjugation
+Automatic Individual Word Conjugations
 Custom Alphabet (Maybe, this might get pushed back to a later update depending on how complex it turns out to be.)

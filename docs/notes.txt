@@ -24,3 +24,7 @@ project options.
 
 11/6/2025 - 7:30pm
 Changed my mind.  Doing it as a menu bar instead.
+
+11/12/2025 - 12:29pm
+Just finished up the update.  Added small features like dark/light mode and cleaned up the code organization.  I'm
+really proud of how far this project has come.

@@ -87,9 +87,10 @@ class EditWordDialog(QDialog):
         self.accept()  # Close the dialog
 
 
-class AddWordFromGenDialog(QDialog):
-    def __init__(self, word, word_classes, parent=None):
+class AddWordDialog(QDialog):
+    def __init__(self, word=None, word_classes=[], parent=None):
         super().__init__(parent)
+        self.info_parent = parent
         self.word = word
         self.word_classes = word_classes
         self.new_entry_data = None
@@ -104,7 +105,8 @@ class AddWordFromGenDialog(QDialog):
         # Form fields
         layout.addWidget(QLabel("Conlang Word:"), 0, 0)
         self.con_entry = QLineEdit()
-        self.con_entry.setText(word)
+        if self.word:
+            self.con_entry.setText(word)
         layout.addWidget(self.con_entry, 0, 1)
 
         layout.addWidget(QLabel("English Translation:"), 1, 0)
@@ -143,6 +145,7 @@ class AddWordFromGenDialog(QDialog):
 
     def save_changes(self):
         # Package up the data for the main window to process
+
         self.new_entry_data = {
             "conlang": self.con_entry.text().strip(),
             "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
@@ -154,6 +157,14 @@ class AddWordFromGenDialog(QDialog):
         if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
             QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
             self.new_entry_data = None  # Invalidate data
+            return
+
+        if any(entry['conlang'].lower() == self.new_entry_data["conlang"].lower() for entry in self.info_parent.dictionary):
+            QMessageBox.warning(self, "Duplicate Entry", f"The word '{self.new_entry_data["conlang"]}' already exists.")
+            return
+
+        if not self.new_entry_data["pos"]:
+            QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
             return
 
         self.accept()  # Close the dialog
@@ -332,9 +343,19 @@ class OpenProjectDialog(QDialog):
 
     def fetch_projects(self):
         if self.flag:
-            return os.listdir(self.info_parent.app_data_master_dir)
+            folders = os.listdir(self.info_parent.app_data_master_dir)
+            try:
+                folders.remove("dark_light_mode.txt")
+            except ValueError:
+                pass
+            return folders
         else:
-            return os.listdir(self.info_parent.app_data_dir)
+            folders = os.listdir(self.info_parent.app_data_dir)
+            try:
+                folders.remove("dark_light_mode.txt")
+            except ValueError:
+                pass
+            return folders
 
     def open_project(self):
         if self.project_select.currentText() == "":
@@ -353,6 +374,8 @@ class OpenProjectDialog(QDialog):
         self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
         self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
 
+        self.info_parent.setWindowTitle(f"{self.project_select.currentText()} Dictionary")
+
         self.accept()
 
     def create_project(self):
@@ -361,17 +384,19 @@ class OpenProjectDialog(QDialog):
 
         if self.flag:
             self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_master_dir, self.project_select.currentText()
+                self.info_parent.app_data_master_dir, self.project_create.text().strip()
             )
         else:
             self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_dir, self.project_select.currentText()
+                self.info_parent.app_data_dir, self.project_create.text().strip()
             )
 
         os.makedirs(os.path.join(self.info_parent.app_data_dir, self.project_create.text().strip()), exist_ok=True)
         self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
         self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
         self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
+
+        self.info_parent.setWindowTitle(f"{self.project_create.text().strip()} Dictionary")
 
         self.accept()
 

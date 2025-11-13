@@ -731,6 +731,7 @@ This application helps you create, manage, and explore your constructed language
 * Generate Random Words:
     - Generation Rules: This is based on a site called Kozuka (creator: https://github.com/auctumnus). It follows the same rules and they already made a very good page explaining them so view rules here: https://kozuka.kmwc.org/help.html
     - Using Output: Double click on one of the generated words to automatically open up an Add Word window with it autofilled into the conlang field.
+    - Save/Load Presets: Save and load generator presets to keep your custom settings between sessions.
 
 == Grammar Appendix Tab ==
 

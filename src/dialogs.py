@@ -160,7 +160,7 @@ class AddWordDialog(QDialog):
             return
 
         if any(entry['conlang'].lower() == self.new_entry_data["conlang"].lower() for entry in self.info_parent.dictionary):
-            QMessageBox.warning(self, "Duplicate Entry", f"The word '{self.new_entry_data["conlang"]}' already exists.")
+            QMessageBox.warning(self, "Duplicate Entry", f"The word '{self.new_entry_data['conlang']}' already exists.")
             return
 
         if not self.new_entry_data["pos"]:
@@ -373,6 +373,7 @@ class OpenProjectDialog(QDialog):
         self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
         self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
         self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
+        self.info_parent.generator_presents = os.path.join(self.info_parent.app_data_dir, "generator_presents.json")
 
         self.info_parent.setWindowTitle(f"{self.project_select.currentText()} Dictionary")
 
@@ -380,6 +381,10 @@ class OpenProjectDialog(QDialog):
 
     def create_project(self):
         if self.project_create.text().strip() == "":
+            return
+
+        if self.project_create.text().strip() in self.fetch_projects():
+            QMessageBox.warning(self, "Invalid Input", "Project with this name already exists.")
             return
 
         if self.flag:
@@ -395,6 +400,7 @@ class OpenProjectDialog(QDialog):
         self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
         self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
         self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
+        self.info_parent.generator_presents = os.path.join(self.info_parent.app_data_dir, "generator_presents.json")
 
         self.info_parent.setWindowTitle(f"{self.project_create.text().strip()} Dictionary")
 
@@ -429,8 +435,20 @@ class RenameProjectDialog(QDialog):
 
         layout.addWidget(box)
 
+    def fetch_projects(self):
+        folders = os.listdir(self.info_parent.app_data_master_dir)
+        try:
+            folders.remove("dark_light_mode.txt")
+        except ValueError:
+            pass
+        return folders
+
     def rename_project(self):
         if self.project_name.text().strip() == "":
+            return
+
+        if self.project_name.text().strip() in self.fetch_projects():
+            QMessageBox.warning(self, "Invalid Input", "Project with this name already exists.")
             return
 
         new_location = os.path.join(self.info_parent.app_data_master_dir, self.project_name.text().strip())

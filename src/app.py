@@ -7,14 +7,15 @@ import shutil
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
     QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog,
-    QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage
+    QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage,
+    QComboBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QAction, QGuiApplication
 
 from src.dialogs import (
     EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordDialog,
-    RenameProjectDialog, ImportantWarningDialog
+    RenameProjectDialog, ImportantWarningDialog, WarningDialog
 )
 from src.wizards import SetProjectNameUpdateErrorWizard
 from src.simulated_kozuka_logic import generate_words
@@ -52,6 +53,7 @@ class ConlangDictionaryApp(QMainWindow):
         self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
         self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
         self.light_dark_mode = os.path.join(self.app_data_master_dir, "dark_light_mode.txt")
+        self.generator_presents = os.path.join(self.app_data_dir, "generator_presents.json")
 
         try:
             with open(self.light_dark_mode, "r") as f:
@@ -74,6 +76,7 @@ class ConlangDictionaryApp(QMainWindow):
         self.dictionary = self.load_dictionary()
         self.all_tags, self.word_classes = self.load_tags()
         self.grammar_data = self.load_grammar()
+        self.presents = self.load_presents()
 
         # --- Create UI ---
         self.create_widgets()
@@ -189,6 +192,34 @@ class ConlangDictionaryApp(QMainWindow):
                 json.dump(self.grammar_data, f, ensure_ascii=False, indent=4)
         except IOError as e:
             QMessageBox.critical(self, "Error Saving Grammar", f"Could not save to grammar file: {e}")
+
+    def load_presents(self):
+        if not os.path.exists(self.generator_presents):
+            return []
+        try:
+            with open(self.generator_presents, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Ensure backward compatibility
+                for entry in data:
+                    entry.setdefault('pos', 'Other')
+                    entry.setdefault('description', '')
+                    entry.setdefault('tags', [])
+                    entry.setdefault('roots', [])
+                    entry.setdefault('derived', [])
+                    # Ensure english is always a list
+                    if 'english' not in entry or not isinstance(entry['english'], list):
+                        entry['english'] = [str(entry.get('english', ''))]
+                return data
+        except (json.JSONDecodeError, IOError) as e:
+            QMessageBox.critical(self, "Error Loading Presents", f"Could not read generator presents file: {e}")
+            return []
+
+    def save_presents(self):
+        try:
+            with open(self.generator_presents, 'w', encoding='utf-8') as f:
+                json.dump(self.presents, f, ensure_ascii=False, indent=4)
+        except IOError as e:
+            QMessageBox.critical(self, "Error Saving Presents", f"Could not save to generator presents file: {e}")
 
     def check_old_file_and_update(self):
         if os.path.exists(self.dictionary_file):
@@ -478,7 +509,7 @@ class ConlangDictionaryApp(QMainWindow):
         patterns_layout.addLayout(self.pattern_rows_layout)
 
         add_pattern_button = QPushButton("+ Add pattern")
-        add_pattern_button.clicked.connect(self.add_pattern_row)
+        add_pattern_button.clicked.connect(lambda: self.add_pattern_row())
         patterns_layout.addWidget(add_pattern_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.content_layout.addWidget(patterns_group)
@@ -509,6 +540,26 @@ class ConlangDictionaryApp(QMainWindow):
         generate_button = QPushButton(QIcon.fromTheme("view-refresh"), "Generate")
         generate_button.clicked.connect(self.generate_output)
         gen_layout.addWidget(generate_button, 3, 0, 1, 2)
+
+        self.pattern_save_name = QLineEdit()
+        self.pattern_save_name.setFixedWidth(300)
+        self.pattern_save_name.setPlaceholderText("Pattern Name")
+        gen_layout.addWidget(self.pattern_save_name, 0, 2, 1, 1)
+
+        save_pattern_button = QPushButton("Save Pattern")
+        save_pattern_button.setFixedWidth(300)
+        save_pattern_button.clicked.connect(self.save_pattern)
+        gen_layout.addWidget(save_pattern_button, 3, 2, 1, 2)
+
+        self.pattern_load_box = QComboBox()
+        self.pattern_load_box.addItems([name["name"] for name in self.presents])
+        self.pattern_load_box.setFixedWidth(300)
+        gen_layout.addWidget(self.pattern_load_box, 0, 3, 1, 1)
+
+        load_pattern_button = QPushButton("Load Pattern")
+        load_pattern_button.setFixedWidth(300)
+        load_pattern_button.clicked.connect(self.load_pattern)
+        gen_layout.addWidget(load_pattern_button, 3, 3, 1, 2)
 
         gen_layout.setColumnStretch(2, 1)  # Add stretch to the right
 
@@ -1153,22 +1204,32 @@ This tab is for your language's documentation.
 
     # --- Kozuka Logic ---
 
-    def add_pattern_row(self):
-        """Adds a new pattern row (name, pattern, remove button) to the layout."""
+    # Modified version of your Snippet 2
+    def add_pattern_row(self, name="", pattern=""):  # <-- Add optional arguments
+        """
+        Adds a new pattern row (name, pattern, remove button) to the layout.
+        Optionally populates it with initial name and pattern data.
+        """
+        print(name)
+        print(pattern)
+
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
 
         name_input = QLineEdit()
         name_input.setPlaceholderText("Name")
+        name_input.setText(name)  # <-- SET THE NAME HERE
 
         pattern_input = QLineEdit()
         pattern_input.setPlaceholderText("Pattern")
+        pattern_input.setText(pattern)  # <-- SET THE PATTERN HERE
 
         remove_button = QPushButton("- Remove")
 
-        # Connect the remove button to a lambda that removes its parent widget
-        remove_button.clicked.connect(lambda: self.remove_pattern_row(row_widget))
+        # Connect the remove button.
+        # Using a lambda that captures the specific 'row_widget' is a good approach.
+        remove_button.clicked.connect(lambda checked, widget=row_widget: self.remove_pattern_row(widget))
 
         row_layout.addWidget(name_input, 1)  # 1 stretch factor
         row_layout.addWidget(pattern_input, 3)  # 3 stretch factor
@@ -1184,6 +1245,15 @@ This tab is for your language's documentation.
             row_widget.deleteLater()
         else:
             self.show_error("You must have at least one pattern.")
+
+    def clear_pattern_rows(self):
+        """Removes ALL dynamic pattern rows from the layout."""
+        # We must iterate backwards when removing items from a layout
+        while self.pattern_rows_layout.count() > 0:
+            item = self.pattern_rows_layout.takeAt(self.pattern_rows_layout.count() - 1)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
 
     def _create_separator(self):
         """Helper to create a horizontal separator line."""
@@ -1229,6 +1299,74 @@ This tab is for your language's documentation.
 
     def make_word_from_gen(self, item: QListWidgetItem):
         self.add_word(item.text())
+
+    def save_pattern(self):
+        name = self.pattern_save_name.text().strip()
+
+        if not name:
+            return
+
+        self.pattern_save_name.clear()
+        settings = self.get_settings()
+
+        for present in self.presents:
+            if present["name"] == name:
+                dialog = WarningDialog(
+                    "An existing pattern has this name, are you sure you want to overwrite that?", self
+                )
+                if dialog.exec():
+                    present["patterns"] = settings["patterns"]
+                    present["mainPattern"] = settings["mainPattern"]
+
+                    self.pattern_load_box.clear()
+                    self.pattern_load_box.addItems([name["name"] for name in self.presents])
+
+                    self.save_presents()
+
+                    return
+                else:
+                    return
+
+        self.presents.append({"name": name, "patterns": settings["patterns"], "mainPattern": settings["mainPattern"]})
+
+        self.pattern_load_box.clear()
+        self.pattern_load_box.addItems([name["name"] for name in self.presents])
+
+        self.save_presents()
+
+    def load_pattern(self):
+        preset_data = None
+
+        name = self.pattern_load_box.currentText()
+        for present in self.presents:
+            if present["name"] == name:
+                preset_data = present
+                break
+
+        if not preset_data:
+            QMessageBox.warning(self, "Critical Error", f"Error: Preset not found.")
+            return
+
+        # 1. Clear all existing pattern rows
+        self.clear_pattern_rows()
+
+        # 2. Load the main pattern (assuming you have self.main_pattern_input)
+        self.main_pattern_input.setText(preset_data.get("mainPattern", ""))
+
+        # 3. Loop through the patterns and add a row for each one
+        patterns_list = preset_data.get("patterns", [])
+        for pattern_dict in patterns_list:
+            # Your get_settings() function creates a dict like {"Name": "Pattern"}
+            # We need to extract the first key and value
+            if pattern_dict:  # Ensure it's not empty
+                try:
+                    name = list(pattern_dict.keys())[0]
+                    pattern = list(pattern_dict.values())[0]
+
+                    # Call your modified add_pattern_row
+                    self.add_pattern_row(name, pattern)
+                except IndexError:
+                    QMessageBox.warning(self, "Load Error", f"Warning: Could not load pattern_dict: {pattern_dict}")
 
     # --- Menu Bar ---
 
@@ -1586,6 +1724,9 @@ This tab is for your language's documentation.
         # so there's no need to prompt on close.
         # If we needed to, we'd pop up a QMessageBox here.
         event.accept()
+
+    def empty(self):
+        pass # Used to give to buttons before I have a function for them to execute
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # Conlang Dictionary App
-A desktop application built with Python and [PySide6](https://github.com/pyside/pyside-setup) designed to help you create, manage, and explore a dictionary and grammar for your constructed language (conlang).
+A desktop application built with Python and PySide6 designed to help you create, manage, and explore a dictionary and grammar for your constructed language (conlang).
 
 ### Features
 This application provides a comprehensive suite of tools for conlang development, organized into several main tabs:
@@ -51,10 +51,10 @@ Settings Menu
 
 Prerequisites
 + [Python 3](https://www.python.org/)
-+ [PyQt6](https://pypi.org/project/PyQt6/): The GUI framework used by the application.
++ [PySide6](https://github.com/pyside/pyside-setup): The GUI framework used by the application.
 
-You can install PyQt6 using pip:
-`pip install PyQt6`
+You can install PySide6 using pip:
+`pip install PySide6`
 
 Running the Application
 1. Download: Download the app.py script and the accompanying src directory.

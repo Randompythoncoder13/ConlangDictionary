@@ -60,14 +60,16 @@ Running the Application
 1. Download: Download the app.py script and the accompanying src directory.
 
 2. Directory Structure: Ensure your files are arranged like this:
-   /Your-Project-Folder
-      |-- app.py
-      |-- /src
-          |-- dialogs.py
-          |-- wizards.py
-          |-- simulated_kozuka_logic.py
-          |-- functions.py
-          |-- custom_widgets.py
+```
+/Your-Project-Folder
+    |-- app.py
+    |-- /src
+        |-- dialogs.py
+        |-- wizards.py
+        |-- simulated_kozuka_logic.py
+        |-- functions.py
+        |-- custom_widgets.py
+```
 
 Execute: Run the app.py script from your terminal:
 `python app.py`

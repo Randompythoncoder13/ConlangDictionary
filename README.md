@@ -75,7 +75,11 @@ Execute: Run the app.py script from your terminal:
 `python app.py`
 
 Data Storage
+
 Your conlang projects are stored locally on your computer in your user's application data directory.
+
 Windows: `C:\Users\<YourUser>\AppData\Local\ConlangDictionary`
+
 Linux: `~/.local/share/ConlangDictionary`
+
 Each project you create will be a subfolder in this location, containing its own set of JSON files for the dictionary, grammar, generator presets, and tags.

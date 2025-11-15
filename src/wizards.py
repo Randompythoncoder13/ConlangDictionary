@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QVBoxLayout, QLabel, QLineEdit, QTextEdit, QWizard, QWizardPage
+from PySide6.QtWidgets import QVBoxLayout, QLabel, QLineEdit, QTextEdit, QWizard, QWizardPage
 
 
 class SPNUEWIntroPage(QWizardPage):

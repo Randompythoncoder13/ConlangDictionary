@@ -4,14 +4,14 @@ import json
 import csv
 import shutil
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
     QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog,
     QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage,
     QComboBox
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QAction, QGuiApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QAction, QGuiApplication
 
 from src.dialogs import (
     EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordDialog,

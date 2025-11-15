@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QListWidget
-from PyQt6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QListWidget
+from PySide6.QtGui import QMouseEvent
 
 
 class DeselectableListWidget(QListWidget):

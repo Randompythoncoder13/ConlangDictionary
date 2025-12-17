@@ -159,10 +159,6 @@ class AddWordDialog(QDialog):
             self.new_entry_data = None  # Invalidate data
             return
 
-        if any(entry['conlang'].lower() == self.new_entry_data["conlang"].lower() for entry in self.info_parent.dictionary):
-            QMessageBox.warning(self, "Duplicate Entry", f"The word '{self.new_entry_data['conlang']}' already exists.")
-            return
-
         if not self.new_entry_data["pos"]:
             QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
             return

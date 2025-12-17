@@ -841,18 +841,6 @@ This tab is for your language's documentation.
             description = new_data["description"]
             tags_list = new_data["tags"]
 
-            if not conlang_word or not english_words:
-                QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
-                return
-
-            if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
-                QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
-                return
-
-            if not pos:
-                QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
-                return
-
             self._update_tags(tags_list)
 
             new_entry = {
@@ -929,12 +917,6 @@ This tab is for your language's documentation.
 
             old_conlang = entry_to_edit['conlang']
             new_conlang = new_data['conlang']
-
-            # Check for duplicate if conlang word changed
-            if new_conlang.lower() != old_conlang.lower() and any(
-                    e['conlang'].lower() == new_conlang.lower() for e in self.dictionary):
-                QMessageBox.critical(self, "Error", "The new conlang word already exists.")
-                return
 
             # Update tags
             self._update_tags(new_data['tags'])

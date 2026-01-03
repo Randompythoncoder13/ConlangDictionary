@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont, QBrush, QColor, QPalette
 from PySide6.QtCore import Qt, QSize, Signal, QUrl
-# from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 PC_TABLE_DATA = [
     # Row 1
@@ -109,7 +109,8 @@ class IPACellWidget(QWidget):
         self.speaker_button = QPushButton()
         play_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
         self.speaker_button.setIcon(play_icon)
-        self.speaker_button.setFixedSize(QSize(22, 22))
+        self.speaker_button.setFixedSize(QSize(18, 18))
+        self.speaker_button.setIconSize(QSize(15, 15))
         self.speaker_button.setFlat(True)
         self.speaker_button.setToolTip(f"Play sound for {self.ipa_text}")
 
@@ -168,11 +169,10 @@ class MainWindow(QMainWindow):
 
         # Define table dimensions
         self.num_rows = 9
-        self.num_cols = 12  # Changed from 25 to 27
+        self.num_cols = 12
         self.table.setRowCount(self.num_rows)
         self.table.setColumnCount(self.num_cols)
 
-        # Hide the default headers, as we are creating our own
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setVisible(False)
 
@@ -190,9 +190,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.table)
         self.setCentralWidget(central_widget)
 
-        # self._player = QMediaPlayer()
-        # self._audio_output = QAudioOutput()
-        # self._player.setAudioOutput(self._audio_output)
+        self._player = QMediaPlayer()
+        self._audio_output = QAudioOutput()
+        self._player.setAudioOutput(self._audio_output)
 
         # Set initial size
         self.resize(1200, 700)
@@ -232,13 +232,13 @@ class MainWindow(QMainWindow):
                         cell_widget_l = IPACellWidget(cell_text.split("/")[0])
                         cell_widget_l.playSound.connect(self.play_audio)
                     else:
-                        cell_widget_l = QLabel("               ")
+                        cell_widget_l = QLabel("           ")
 
                     if cell_text.split("/")[1] != " ":
                         cell_widget_r = IPACellWidget(cell_text.split("/")[1])
                         cell_widget_r.playSound.connect(self.play_audio)
                     else:
-                        cell_widget_r = QLabel("               ")
+                        cell_widget_r = QLabel("           ")
 
                     container.addWidget(cell_widget_l)
                     container.addWidget(cell_widget_r)
@@ -249,9 +249,9 @@ class MainWindow(QMainWindow):
         self.table.resizeColumnsToContents()
         self.table.resizeRowsToContents()
 
-        # Give a little more width to data columns for padding
-        for c in range(1, self.num_cols):
-            self.table.setColumnWidth(c, self.table.columnWidth(c) + 10)
+        # # Give a little more width to data columns for padding
+        # for c in range(1, self.num_cols):
+        #     self.table.setColumnWidth(c, self.table.columnWidth(c) + 10)
 
         # Give a little more width to the first (header) column
         self.table.setColumnWidth(0, self.table.columnWidth(0) + 15)
@@ -264,9 +264,9 @@ class MainWindow(QMainWindow):
             return
 
         full_path = os.path.abspath(file_path)
-        # self._player.stop()  # Stop any currently playing sound
-        # self._player.setSource(QUrl.fromLocalFile(full_path))
-        # self._player.play()
+        self._player.stop()  # Stop any currently playing sound
+        self._player.setSource(QUrl.fromLocalFile(full_path))
+        self._player.play()
         print("audio plays")
 
 

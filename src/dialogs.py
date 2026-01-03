@@ -303,7 +303,7 @@ class ManagePOSDialog(QDialog):
 
 
 class OpenProjectDialog(QDialog):
-    def __init__(self, parent=None, flag=False):
+    def     __init__(self, parent=None, flag=False):
         super().__init__(parent)
         self.info_parent = parent
         self.flag = flag

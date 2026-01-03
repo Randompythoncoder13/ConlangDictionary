@@ -1,6 +1,8 @@
 import shutil
 import zipfile
 import os
+from PySide6.QtGui import QFontDatabase, QFont
+
 
 def zip_folder(source_folder, output_filename):
     """
@@ -14,7 +16,7 @@ def zip_folder(source_folder, output_filename):
         # Create the zip archive
         # The 'zip' format means it will create a .zip file
         # base_dir is the directory to start archiving from
-        shutil.make_archive(output_filename, 'zip', source_folder)
+        shutil.make_archive(output_filename[:-4], 'zip', source_folder)
         print(f"Successfully created '{output_filename}.zip' from '{source_folder}'")
     except Exception as e:
         print(f"Error zipping folder: {e}")
@@ -60,3 +62,23 @@ def clear_folder(folder_path):
                     print(f"Error deleting {file_path}: {e}")
     else:
         print(f"Folder not found or is not a directory: {folder_path}")
+
+
+def get_font(file_name):
+    try:
+        font_id = QFontDatabase.addApplicationFont(file_name)
+
+        if font_id == -1:
+            return "Could not load custom font."
+
+        families = QFontDatabase.applicationFontFamilies(font_id)
+
+        if not families:
+            return "Could not load custom font."
+
+        family_name = families[0]
+
+        return QFont(family_name, 12)
+
+    except Exception as e:
+        return "Could not load custom font."

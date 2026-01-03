@@ -1,6 +1,7 @@
 import soundfile as sf
 import numpy as np
 from kokoro import KPipeline
+import sounddevice as sd
 
 
 def synthesize_ipa_to_file(ipa_string, voice_name, output_filename):
@@ -34,6 +35,10 @@ def synthesize_ipa_to_file(ipa_string, voice_name, output_filename):
 
     samplerate = 24000
     sf.write(output_filename, final_audio, samplerate)
+    data, fs = sf.read(output_filename)
+    sd.play(data, fs)
+    sd.wait()
+
 
     print(f"\nSuccess! Audio saved to: {output_filename}")
 

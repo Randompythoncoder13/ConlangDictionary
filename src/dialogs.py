@@ -1,5 +1,6 @@
 import sys
 import os
+
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
     QMessageBox, QDialog, QDialogButtonBox
@@ -12,15 +13,17 @@ class EditWordDialog(QDialog):
     A dialog window for editing an existing dictionary entry.
     """
 
-    def __init__(self, entry_to_edit, word_classes, parent=None):
+    def __init__(self, entry_to_edit, word_classes, parent):
         super().__init__(parent)
+        self.info_parent = parent
         self.entry_to_edit = entry_to_edit
         self.word_classes = word_classes
         self.new_entry_data = None
 
         self.setWindowTitle(f"Edit '{self.entry_to_edit['conlang']}'")
-        self.setModal(True)
-        self.setMinimumWidth(450)
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setMinimumSize(300, 400)
 
         layout = QGridLayout(self)
         self.setLayout(layout)
@@ -29,6 +32,9 @@ class EditWordDialog(QDialog):
         layout.addWidget(QLabel("Conlang Word:"), 0, 0)
         self.con_entry = QLineEdit()
         self.con_entry.setText(entry_to_edit['conlang'])
+        if self.info_parent.custom_font_on:
+            if self.info_parent.font:
+                self.con_entry.setFont(self.info_parent.font)
         layout.addWidget(self.con_entry, 0, 1)
 
         # Join English words back into a comma-separated string
@@ -38,24 +44,43 @@ class EditWordDialog(QDialog):
         self.eng_entry.setText(english_str)
         layout.addWidget(self.eng_entry, 1, 1)
 
-        layout.addWidget(QLabel("Part of Speech:"), 2, 0)
+        layout.addWidget(QLabel("Syllabication:"), 2, 0)
+        self.syllable_entry = QLineEdit()
+        if entry_to_edit['syllable']:
+            self.syllable_entry.setText(entry_to_edit['syllable'])
+        else:
+            self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
+        if self.info_parent.custom_font_on:
+            if self.info_parent.font:
+                self.syllable_entry.setFont(self.info_parent.font)
+        layout.addWidget(self.syllable_entry, 2, 1)
+
+        layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
+        self.ipa_entry = QLineEdit()
+        if entry_to_edit['ipa']:
+            self.ipa_entry.setText(entry_to_edit['ipa'])
+        else:
+            self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
+        layout.addWidget(self.ipa_entry, 3, 1)
+
+        layout.addWidget(QLabel("Part of Speech:"), 4, 0)
         self.pos_box = QComboBox()
         self.pos_box.addItems(self.word_classes)
         self.pos_box.setCurrentText(entry_to_edit['pos'])
-        layout.addWidget(self.pos_box, 2, 1)
+        layout.addWidget(self.pos_box, 4, 1)
 
-        layout.addWidget(QLabel("Description:"), 3, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Description:"), 5, 0, Qt.AlignmentFlag.AlignTop)
         self.desc_text = QTextEdit()
         self.desc_text.setText(entry_to_edit['description'])
         self.desc_text.setMinimumHeight(100)
-        layout.addWidget(self.desc_text, 3, 1)
+        layout.addWidget(self.desc_text, 5, 1)
 
         # Join tags back into a comma-separated string
         tags_str = ", ".join(entry_to_edit.get('tags', []))
-        layout.addWidget(QLabel("Tags (comma-sep):"), 4, 0)
+        layout.addWidget(QLabel("Tags (comma-sep):"), 6, 0)
         self.tags_entry = QLineEdit()
         self.tags_entry.setText(tags_str)
-        layout.addWidget(self.tags_entry, 4, 1)
+        layout.addWidget(self.tags_entry, 6, 1)
 
         # Buttons
         button_box = QHBoxLayout()
@@ -67,7 +92,7 @@ class EditWordDialog(QDialog):
         button_box.addStretch()
         button_box.addWidget(self.save_button)
         button_box.addWidget(self.cancel_button)
-        layout.addLayout(button_box, 5, 0, 1, 2)
+        layout.addLayout(button_box, 7, 0, 1, 2)
 
     def save_changes(self):
         # Package up the data for the main window to process
@@ -76,8 +101,12 @@ class EditWordDialog(QDialog):
             "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
             "pos": self.pos_box.currentText(),
             "description": self.desc_text.toPlainText().strip(),
-            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()]
+            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()],
+            "ipa": self.ipa_entry.text().strip(),
+            "syllable": self.syllable_entry.text().strip()
         }
+
+        print(self.ipa_entry.text().strip())
 
         if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
             QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
@@ -96,8 +125,9 @@ class AddWordDialog(QDialog):
         self.new_entry_data = None
 
         self.setWindowTitle(f"Add Word")
-        self.setModal(True)
-        self.setMinimumWidth(450)
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setMinimumSize(300, 400)
 
         layout = QGridLayout(self)
         self.setLayout(layout)
@@ -107,6 +137,9 @@ class AddWordDialog(QDialog):
         self.con_entry = QLineEdit()
         if self.word:
             self.con_entry.setText(word)
+        if self.info_parent.custom_font_on:
+            if self.info_parent.font:
+                self.con_entry.setFont(self.info_parent.font)
         layout.addWidget(self.con_entry, 0, 1)
 
         layout.addWidget(QLabel("English Translation:"), 1, 0)
@@ -114,22 +147,35 @@ class AddWordDialog(QDialog):
         self.eng_entry.setPlaceholderText("e.g., set, place")
         layout.addWidget(self.eng_entry, 1, 1)
 
-        layout.addWidget(QLabel("Part of Speech:"), 2, 0)
+        layout.addWidget(QLabel("Syllabication:"), 2, 0)
+        self.syllable_entry = QLineEdit()
+        self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
+        if self.info_parent.custom_font_on:
+            if self.info_parent.font:
+                self.syllable_entry.setFont(self.info_parent.font)
+        layout.addWidget(self.syllable_entry, 2, 1)
+
+        layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
+        self.ipa_entry = QLineEdit()
+        self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
+        layout.addWidget(self.ipa_entry, 3, 1)
+
+        layout.addWidget(QLabel("Part of Speech:"), 4, 0)
         self.pos_box = QComboBox()
         self.pos_box.addItems(self.word_classes)
         self.pos_box.setCurrentIndex(-1)
-        layout.addWidget(self.pos_box, 2, 1)
+        layout.addWidget(self.pos_box, 4, 1)
 
-        layout.addWidget(QLabel("Description:"), 3, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(QLabel("Description:"), 5, 0, Qt.AlignmentFlag.AlignTop)
         self.desc_text = QTextEdit()
         self.desc_text.setMinimumHeight(100)
-        layout.addWidget(self.desc_text, 3, 1)
+        layout.addWidget(self.desc_text, 5, 1)
 
         # Join tags back into a comma-separated string
-        layout.addWidget(QLabel("Tags (comma-sep):"), 4, 0)
+        layout.addWidget(QLabel("Tags (comma-sep):"), 6, 0)
         self.tags_entry = QLineEdit()
         self.tags_entry.setPlaceholderText("e.g., informal, tech")
-        layout.addWidget(self.tags_entry, 4, 1)
+        layout.addWidget(self.tags_entry, 6, 1)
 
         # Buttons
         button_box = QHBoxLayout()
@@ -141,7 +187,7 @@ class AddWordDialog(QDialog):
         button_box.addStretch()
         button_box.addWidget(self.save_button)
         button_box.addWidget(self.cancel_button)
-        layout.addLayout(button_box, 5, 0, 1, 2)
+        layout.addLayout(button_box, 7, 0, 1, 2)
 
     def save_changes(self):
         # Package up the data for the main window to process
@@ -151,16 +197,16 @@ class AddWordDialog(QDialog):
             "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
             "pos": self.pos_box.currentText(),
             "description": self.desc_text.toPlainText().strip(),
-            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()]
+            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()],
+            "ipa": self.ipa_entry.text().strip(),
+            "syllable": self.syllable_entry.text().strip()
         }
+
+        print(self.ipa_entry.text().strip())
 
         if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
             QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
             self.new_entry_data = None  # Invalidate data
-            return
-
-        if any(entry['conlang'].lower() == self.new_entry_data["conlang"].lower() for entry in self.info_parent.dictionary):
-            QMessageBox.warning(self, "Duplicate Entry", f"The word '{self.new_entry_data['conlang']}' already exists.")
             return
 
         if not self.new_entry_data["pos"]:
@@ -179,7 +225,8 @@ class ManageTagsDialog(QDialog):
         super().__init__(parent)
         self.all_tags = all_tags  # This is a reference to the main list
         self.setWindowTitle("Manage Tags")
-        self.setModal(True)
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.setMinimumSize(300, 400)
 
         layout = QVBoxLayout(self)
@@ -247,7 +294,8 @@ class ManagePOSDialog(QDialog):
         super().__init__(parent)
         self.pos = pos  # This is a reference to the main list
         self.setWindowTitle("Manage Parts of Speech")
-        self.setModal(True)
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.setMinimumSize(300, 400)
 
         layout = QVBoxLayout(self)
@@ -460,6 +508,8 @@ class RenameProjectDialog(QDialog):
         self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
         self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
 
+        self.info_parent.setWindowTitle(self.project_name.text().strip())
+
         self.accept()
 
 
@@ -533,3 +583,32 @@ class ImportantWarningDialog(QDialog):
             self.accept()
         else:
             self.reject()
+
+
+class DebugDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Debug Menu")
+        self.setModal(False)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setMinimumSize(600, 300)
+
+        layout = QVBoxLayout(self)
+
+        self.infobox = QTextEdit(self)
+        self.infobox.setReadOnly(True)
+        layout.addWidget(self.infobox)
+
+        path = parent.path.split('\\')
+        path.remove('src')
+
+        try:
+            path.remove('src')
+        except ValueError:
+            pass
+
+        self.infobox.setText(f"""Directory: {parent.app_data_master_dir}
+Program Location: {parent.path}
+Sound Location: {'\\'.join(path)}\\assets\\ipa_sounds""")
+
+        self.setLayout(layout)

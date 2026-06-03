@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage, QComboBox, QRadioButton, QHeaderView,
     QAbstractItemView
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence
 
 from src.dialogs import (

@@ -70,9 +70,11 @@ Feature Request:
 Prerequisites
 + [Python 3](https://www.python.org/)
 + [PySide6](https://github.com/pyside/pyside-setup): The GUI framework used by the application.
++ [Pyperclip](https://pypi.org/project/pyperclip/): Allows copying to the clipboard.
++ [Playsound3](https://pypi.org/project/playsound3/): Allows for playing sound files.
 
-You can install PySide6 using pip:
-`pip install PySide6`
+You can install dependencies using pip:
+`pip install PySide6 pyperclip playsound3`
 
 Running the Application
 1. Download: Download the main.py script and the accompanying src directory.
@@ -82,15 +84,23 @@ Running the Application
 /Your-Project-Folder
 |-- main.py
 |-- /src
-    |-- app.py
-    |-- custom_widgets.py
-    |-- db_manager.py
-    |-- dialogs.py
-    |-- functions.py
-    |-- help.txt
-    |-- IPA_tables.py
-    |-- simulated_kozuka_logic.py
-    |-- wizards.py
+|   |-- app.py
+|   |-- custom_widgets.py
+|   |-- db_manager.py
+|   |-- dialogs.py
+|   |-- functions.py
+|   |-- help.txt
+|   |-- IPA_tables.py
+|   |-- simulated_kozuka_logic.py
+|   |-- wizards.py
+|
+|-- /assets
+    |-- logo.png
+    |-- /ipa_sounds
+        |-- !.mp3
+        |-- a.mp3
+        |-- b.mp3
+        |-- ...
 ```
 
 Execute: Run the main.py script from your terminal:

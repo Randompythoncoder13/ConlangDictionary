@@ -9,18 +9,19 @@ This application provides a comprehensive suite of tools for conlang development
    + Rich Word Entries: Each entry includes:
      + The conlang word
      + One or more English translations (separated by commas)
+     + Syllabication
+     + IPA Pronunciation
      + Part of Speech (customizable)
+     + A description/definition field
      + Tags (customizable)
-     + A rich text description/notes field
    + Etymology Tracking: Link words together by defining "Root" (words this word comes from) and "Derived" (words that come from this word) relationships. You can double-click a linked word to jump to it.
-   + Powerful Search: Search for words in either your conlang or in English.
-   + Filtering: Filter the dictionary view by Part of Speech, tags, or both.
-   + Customization: Manage your project's specific lists for Parts of Speech and tags.
+   + Lexical Relations: Link words to their Synonyms and Antonyms for quick reference.
+   + Powerful Search & Filtering: Search for words in either your conlang or in English, and filter the dictionary view by Part of Speech, tags, or both.
+   + Customization: Manage your project's specific lists for Parts of Speech and tags, and toggle your custom imported fonts on or off.
 
 
 2. Word Generator Tab
-   + Kozuka-Based: Uses logic inspired by the [Kozuka](https://kozuka.kmwc.org/) word generator.
-   + Pattern Definition: Define custom letter/sound patterns (e.g., C=b,p,t,d, V=a,e,i) and a main pattern (e.g., CVCV) to generate words.
+   + Kozuka-Based: Uses logic inspired by the [Kozuka](https://kozuka.kmwc.org/) word generator to create words based on custom letter/sound patterns.
    + Save/Load Presets: Save your generator patterns as a named preset and reload them later.
    + Quick Add: Double-click any word in the generated list to open the "Add Word" dialog with it pre-filled.
 
@@ -29,7 +30,14 @@ This application provides a comprehensive suite of tools for conlang development
    + Grammar Rules: A dedicated rich text editor for your main grammar documentation (e.g., phonology, syntax, morphology). Requires manual save.
    + Grammar Tables: Create and manage multiple tables for things like noun declensions, verb conjugations, or affix lists. The table editor supports adding/removing rows and columns and editing headers. Requires manual save.
 
-4. Statistics Tab
+
+4. IPA Chart Tab
+   + Interactive IPA Tables: View comprehensively mapped charts for Pulmonic Consonants, Non-Pulmonic Consonants, Vowels, and Other symbols.
+   + Audio Playback: Click the speaker icon next to compatible IPA characters to hear their pronunciation.
+   + Copy to Clipboard: Click on any IPA cell to instantly copy the character to your clipboard.
+
+
+5. Statistics Tab
    + At-a-Glance Info: Get a quick overview of your dictionary, including:
      + Total word count
      + Number of root words (no etymological parents)
@@ -38,10 +46,11 @@ This application provides a comprehensive suite of tools for conlang development
      + Word counts by tag
 
 
-5. How To Use / Help Tab
+6. How To Use / Help Tab
    + Built-in Guide: A comprehensive help tab that explains all the application's features.
 
-Project Management (File Menu)
+
+File Menu
   + Multi-Project Support: Create and switch between multiple conlang projects. Each project is stored in its own folder.
   + Project Operations: Easily rename or delete the current project.
   + Import/Export: Back up your entire project (dictionary, grammar, tags) to a .zip file, or import a project from a .zip file.
@@ -49,6 +58,12 @@ Project Management (File Menu)
 
 Settings Menu
   + Theme: Toggle between Light and Dark mode.
+
+Project
+  + Custom Fonts: Import .ttf or .otf font files to render your custom conlang script dynamically throughout the application.
+
+Feature Request:
+  + Request a Feature: Link to a [Google Form](https://forms.gle/Tbcp4ZTEdrRSxUwF9) where you can request a new feature.
 
 ### How to Run
 
@@ -60,19 +75,22 @@ You can install PySide6 using pip:
 `pip install PySide6`
 
 Running the Application
-1. Download: Download the app.py script and the accompanying src directory.
+1. Download: Download the main.py script and the accompanying src directory.
 
 2. Directory Structure: Ensure your files are arranged like this:
 ```
 /Your-Project-Folder
-    |-- main.py
-    |-- /src
-        |-- app.py
-        |-- dialogs.py
-        |-- wizards.py
-        |-- simulated_kozuka_logic.py
-        |-- functions.py
-        |-- custom_widgets.py
+|-- main.py
+|-- /src
+    |-- app.py
+    |-- custom_widgets.py
+    |-- db_manager.py
+    |-- dialogs.py
+    |-- functions.py
+    |-- help.txt
+    |-- IPA_tables.py
+    |-- simulated_kozuka_logic.py
+    |-- wizards.py
 ```
 
 Execute: Run the main.py script from your terminal:
@@ -84,4 +102,4 @@ Your conlang projects are stored locally on your computer in your user's applica
 + MacOs: `/Users/<YourUse>/Application Support/ConlangDictionary`
 + Linux: `/home/<YourUser>/.local/share/ConlangDictionary`
 
-Each project you create will be a subfolder in this location, containing its own set of JSON, TTF/OTF, and TXT files for the dictionary, grammar, generator presets, tags, light/dark mode, and custom fonts.
+Each project you create will be a subfolder in this location. The app uses a localized SQLite database (project.db) to efficiently store your dictionary, grammar tables, tags, and presets. Note: Older JSON-based projects are automatically backed up and migrated to this new database format upon opening. Your custom fonts and theme preferences are also saved directly in your project's directory.

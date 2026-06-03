@@ -1,6 +1,7 @@
 import shutil
 import zipfile
 import os
+import sys
 from PySide6.QtGui import QFontDatabase, QFont
 
 
@@ -82,3 +83,39 @@ def get_font(file_name):
 
     except Exception as e:
         return "Could not load custom font."
+
+
+def get_words(dictionary, flag="C"):
+    words = []
+
+    for word in dictionary:
+        if flag == "C":
+            words.append(word["conlang"])
+        elif flag == "E":
+            words.append(word["english"])
+
+    return words
+
+
+def process_font(path):
+    font_id = QFontDatabase.addApplicationFont(path)
+
+    families = QFontDatabase.applicationFontFamilies(font_id)
+
+    try:
+        return families[0]
+
+    except Exception as e:
+        return None
+
+
+def get_correct_path(relative_path):
+    """Gets the absolute path to a file, whether running as a script or a packaged .exe"""
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+    else:
+        # We are running as a normal Python script in an IDE
+        # Get the current working directory
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)

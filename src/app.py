@@ -1,27 +1,29 @@
 import sys
 import os
-import json
 import csv
 import shutil
 from pathlib import Path
+import json
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
-    QTextEdit, QPushButton, QRadioButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog,
-    QSplitter, QAbstractItemView, QHeaderView, QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage,
-    QComboBox
+    QTextEdit, QPushButton, QListWidget, QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog, QSplitter,
+    QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage, QComboBox, QRadioButton, QHeaderView,
+    QAbstractItemView
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QAction, QGuiApplication
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence
 
 from src.dialogs import (
-    EditWordDialog, ManageTagsDialog, OpenProjectDialog, ManagePOSDialog, AddWordDialog,
-    RenameProjectDialog, ImportantWarningDialog, WarningDialog
+    OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, WarningDialog, ManagePOSDialog, ManageTagsDialog,
+    EditWordDialog, AddWordDialog, DebugDialog
 )
-from src.wizards import SetProjectNameUpdateErrorWizard
 from src.simulated_kozuka_logic import generate_words
-from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font
-from src.custom_widgets import DeselectableListWidget
+from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font, process_font
+from src.custom_widgets import IPATable, DeselectableListWidget
+from src.IPA_tables import PC_TABLE_DATA, NPC_TABLE_DATA, V_TABLE_DATA, OA_TABLE_DATA
+from src.db_manager import DatabaseManager
+from src.help import help_text
 
 
 class ConlangDictionaryApp(QMainWindow):
@@ -35,59 +37,46 @@ class ConlangDictionaryApp(QMainWindow):
         self.setWindowTitle("Conlang Dictionary")
         self.setGeometry(100, 100, 1100, 800)
 
-        # --- Data File Setup
-
-        try:
-            if sys.platform == "win32":
-                app_data_path = os.getenv('LOCALAPPDATA')
-            elif sys.platform == "darwin":
-                app_data_path = os.getenv('~/Library/Application Support')
-            else:
-                app_data_path = os.path.expanduser("~/.local/share")  # Fallback for Linux
-
-            self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")
-            self.app_data_master_dir = self.app_data_dir
-            os.makedirs(self.app_data_dir, exist_ok=True)
-
-        except OSError as e:
-            QMessageBox.critical(self, "Fatal Error", f"Could not create data directory: {e}")
-            sys.exit(1)
+        # --- Data File Setup ---
+        self._setup_directories()
+        self._load_theme_mode()
+        self.path = str(Path(__file__).parent.resolve())
+        self.sound_path = None
 
         self.font_exists = False
+        self.custom_font_on = True
 
-        self.dictionary_file = os.path.join(self.app_data_dir, "conlang_dictionary.json")
-        self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
-        self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
-        self.light_dark_mode = os.path.join(self.app_data_master_dir, "dark_light_mode.txt")
-        self.generator_presents = os.path.join(self.app_data_dir, "generator_presents.json")
-        self.font_file = None
+        path = self.path.split('\\')
+        path.remove('src')
 
         try:
-            with open(self.light_dark_mode, "r") as f:
-                data = f.read()
+            path.remove('src')
+        except ValueError:
+            pass
 
-            if data == "l":
-                self.set_light_mode()
-            else:
-                self.set_dark_mode()
-        except FileNotFoundError:
-            self.set_light_mode()
+        path = f"{'\\'.join(path)}/assets/logo.png"
 
-        if os.path.exists(self.dictionary_file):
-            self.check_old_file_and_update()
+        if os.path.exists(path):
+            self.setWindowIcon(QIcon(path))
         else:
-            dialog = OpenProjectDialog(self)
-            dialog.exec()
+            self.setWindowIcon(QIcon("assets/logo.png"))
 
-        # --- Load Data ---
+        dialog = OpenProjectDialog(self)
+        dialog.exec()
+
+        self.update_version()
+
+        self.db_path = os.path.join(self.app_data_dir, "project.db")
+        self.db = DatabaseManager(self.db_path)
+        self.db.migrate_from_json(self.app_data_dir)
+
+        # --- Load Data from SQL ---
         self.dictionary = self.load_dictionary()
         self.all_tags, self.word_classes = self.load_tags()
         self.grammar_data = self.load_grammar()
         self.presents = self.load_presents()
         self.font = self.load_font()
-
-        # --- Flag Variables ---
-        self.custom_font_on = True
+        self.font_family_name = process_font(self.font_file) if self.font_file else ""
 
         # --- Create UI ---
         self.create_widgets()
@@ -98,130 +87,61 @@ class ConlangDictionaryApp(QMainWindow):
         self.update_grammar_table_listbox()
         self.load_grammar_rules()
 
+        self.shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
+        self.shortcut.activated.connect(self.debug)
+
+    def _setup_directories(self):
+        try:
+            if sys.platform == "win32":
+                app_data_path = os.getenv('LOCALAPPDATA')
+            elif sys.platform == "darwin":
+                app_data_path = os.getenv('~/Library/Application Support')
+            else:
+                app_data_path = os.path.expanduser("~/.local/share")
+            self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")
+            self.app_data_master_dir = self.app_data_dir
+            os.makedirs(self.app_data_dir, exist_ok=True)
+        except OSError as e:
+            QMessageBox.critical(self, "Fatal Error", f"Could not create data directory: {e}")
+            sys.exit(1)
+
+    def _load_theme_mode(self):
+        self.light_dark_mode = os.path.join(self.app_data_master_dir, "dark_light_mode.txt")
+        try:
+            with open(self.light_dark_mode, "r") as f:
+                if f.read() == "l":
+                    self.set_light_mode()
+                else:
+                    self.set_dark_mode()
+        except FileNotFoundError:
+            self.set_light_mode()
+
     # --- Data Load/Save Methods ---
 
-    def load_dictionary(self):
-        if not os.path.exists(self.dictionary_file):
-            return []
-        try:
-            with open(self.dictionary_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                for entry in data:
-                    entry.setdefault('pos', 'Other')
-                    entry.setdefault('description', '')
-                    entry.setdefault('tags', [])
-                    entry.setdefault('roots', [])
-                    entry.setdefault('derived', [])
-                    if 'english' not in entry or not isinstance(entry['english'], list):
-                        entry['english'] = [str(entry.get('english', ''))]
-                return data
-        except (json.JSONDecodeError, IOError) as e:
-            QMessageBox.critical(self, "Error Loading Dictionary", f"Could not read dictionary file: {e}")
-            return []
-
     def save_dictionary(self):
-        try:
-            with open(self.dictionary_file, 'w', encoding='utf-8') as f:
-                json.dump(self.dictionary, f, ensure_ascii=False, indent=4)
-        except IOError as e:
-            QMessageBox.critical(self, "Error Saving Dictionary", f"Could not save to dictionary file: {e}")
-
-    def load_tags(self):
-        if not os.path.exists(self.tags_file):
-            return [], [
-                "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
-                "Prefix", "Suffix"
-            ]
-        try:
-            with open(self.tags_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-
-                if type(data) == list:
-                    return data, [
-                        "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
-                        "Prefix", "Suffix"
-                    ]
-                else:
-                    return data["tags"], data["pos"]
-        except (json.JSONDecodeError, IOError) as e:
-            QMessageBox.critical(self, "Error Loading Tags", f"Could not read tags file: {e}")
-            return [], [
-                "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
-                "Prefix", "Suffix"
-            ]
+        self.db.save_dictionary(self.dictionary)
 
     def save_tags(self):
-        try:
-            self.all_tags.sort()
-            with open(self.tags_file, 'w', encoding='utf-8') as f:
-                json.dump({"tags": self.all_tags, "pos": self.word_classes}, f, ensure_ascii=False, indent=4)
-        except IOError as e:
-            QMessageBox.critical(self, "Error Saving Tags", f"Could not save to tags file: {e}")
-
-    def load_grammar(self):
-        if not os.path.exists(self.grammar_file):
-            return {"rules": "", "tables": {}}
-        try:
-            with open(self.grammar_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                data.setdefault('rules', '')
-                data.setdefault('tables', {})
-
-                migrated_tables = {}
-                for table_name, content in data['tables'].items():
-                    if isinstance(content, str):
-                        print(f"Migrating old grammar table: {table_name}")
-                        migrated_data = {
-                            "data": [[content]],
-                            "row_headers": ["1"],
-                            "col_headers": ["Notes"]
-                        }
-                        migrated_tables[table_name] = migrated_data
-                    elif isinstance(content, dict):
-                        content.setdefault("data", [[]])
-                        content.setdefault("row_headers", [])
-                        content.setdefault("col_headers", [])
-                        migrated_tables[table_name] = content
-
-                data['tables'] = migrated_tables
-
-                return data
-        except (json.JSONDecodeError, IOError) as e:
-            QMessageBox.critical(self, "Error Loading Grammar", f"Could not read grammar file: {e}")
-            return {"rules": "", "tables": {}}
+        self.all_tags.sort()
+        self.db.save_tags_and_pos(self.all_tags, self.word_classes)
 
     def save_grammar(self):
-        try:
-            with open(self.grammar_file, 'w', encoding='utf-8') as f:
-                json.dump(self.grammar_data, f, ensure_ascii=False, indent=4)
-        except IOError as e:
-            QMessageBox.critical(self, "Error Saving Grammar", f"Could not save to grammar file: {e}")
-
-    def load_presents(self):
-        if not os.path.exists(self.generator_presents):
-            return []
-        try:
-            with open(self.generator_presents, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                for entry in data:
-                    entry.setdefault('pos', 'Other')
-                    entry.setdefault('description', '')
-                    entry.setdefault('tags', [])
-                    entry.setdefault('roots', [])
-                    entry.setdefault('derived', [])
-                    if 'english' not in entry or not isinstance(entry['english'], list):
-                        entry['english'] = [str(entry.get('english', ''))]
-                return data
-        except (json.JSONDecodeError, IOError) as e:
-            QMessageBox.critical(self, "Error Loading Presents", f"Could not read generator presents file: {e}")
-            return []
+        self.db.save_grammar(self.grammar_data)
 
     def save_presents(self):
-        try:
-            with open(self.generator_presents, 'w', encoding='utf-8') as f:
-                json.dump(self.presents, f, ensure_ascii=False, indent=4)
-        except IOError as e:
-            QMessageBox.critical(self, "Error Saving Presents", f"Could not save to generator presents file: {e}")
+        self.db.save_presets(self.presents)
+
+    def load_dictionary(self):
+        return self.db.get_dictionary()
+
+    def load_tags(self):
+        return self.db.get_tags_and_pos()
+
+    def load_grammar(self):
+        return self.db.get_grammar()
+
+    def load_presents(self):
+        return self.db.get_presets()
 
     def load_font(self):
         self.font_file = os.path.join(self.app_data_dir, "font.ttf")
@@ -241,32 +161,53 @@ class ConlangDictionaryApp(QMainWindow):
         else:
             return None
 
-    def check_old_file_and_update(self):
-        if os.path.exists(self.dictionary_file):
-            wizard = SetProjectNameUpdateErrorWizard(info_parent=self)
+    def update_version(self):
+        if not os.path.exists(self.dictionary_file):
+            return
+        try:
+            with open(self.dictionary_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                for entry in data:
+                    entry.setdefault('pos', 'Other')
+                    entry.setdefault('description', '')
+                    entry.setdefault('tags', [])
+                    entry.setdefault('roots', [])
+                    entry.setdefault('derived', [])
+                    entry.setdefault('ipa', '')
+                    entry.setdefault('syllable', '')
+                    entry.setdefault('synonyms', [])
+                    entry.setdefault('antonyms', [])
+                    if 'english' not in entry or not isinstance(entry['english'], list):
+                        entry['english'] = [str(entry.get('english', ''))]
+        except (json.JSONDecodeError, IOError) as e:
+            QMessageBox.critical(self, "Failure to Update", f"Could not read dictionary file: {e}")
 
-            if wizard.exec():
-                name = wizard.field("name")
+        try:
+            with open(self.dictionary_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except IOError as e:
+            QMessageBox.critical(self, "Failure", f"Could not save to dictionary file: {e}")
 
-                new_location = os.path.join(self.app_data_master_dir, name)
-                os.makedirs(new_location, exist_ok=True)
+        if not os.path.exists(self.tags_file):
+            tags = []
+            pos = [
+                "Noun", "Verb", "Adjective", "Adverb", "Pronoun", "Preposition", "Conjunction", "Interjection",
+                "Prefix", "Suffix"
+            ]
 
-                if os.path.exists(self.dictionary_file):
-                    new_dict_path = os.path.join(new_location, "conlang_dictionary.json")
-                    shutil.move(self.dictionary_file, new_location)
-                    self.dictionary_file = new_dict_path
+            pos.sort()
+            with open(self.tags_file, 'w', encoding='utf-8') as f:
+                json.dump({"tags": tags, "pos": pos}, f, ensure_ascii=False, indent=4)
 
-                if os.path.exists(self.tags_file):
-                    new_tags_path = os.path.join(new_location, "conlang_tags.json")
-                    shutil.move(self.tags_file, new_location)
-                    self.tags_file = new_tags_path
+        if not os.path.exists(self.grammar_file):
+            grammar_data = {"rules": "", "tables": {}}
 
-                if os.path.exists(self.grammar_file):
-                    new_grammar_path = os.path.join(new_location, "conlang_grammar.json")
-                    shutil.move(self.grammar_file, new_location)
-                    self.grammar_file = new_grammar_path
+            with open(self.grammar_file, 'w', encoding='utf-8') as f:
+                json.dump(grammar_data, f, ensure_ascii=False, indent=4)
 
-                self.app_data_dir = new_location
+        if not os.path.exists(self.generator_presents):
+            with open(self.generator_presents, 'w', encoding='utf-8') as f:
+                json.dump([], f, ensure_ascii=False, indent=4)
 
     # --- UI Creation Methods ---
 
@@ -279,18 +220,21 @@ class ConlangDictionaryApp(QMainWindow):
         self.tab_dictionary = QWidget()
         self.tab_word_generator = QWidget()
         self.tab_grammar = QWidget()
+        self.tab_ipa = QWidget()
         self.tab_stats = QWidget()
         self.tab_help = QWidget()
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
         self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
         self.main_notebook.addTab(self.tab_grammar, 'Grammar Appendix')
+        self.main_notebook.addTab(self.tab_ipa, 'IPA Chart')
         self.main_notebook.addTab(self.tab_stats, 'Statistics')
         self.main_notebook.addTab(self.tab_help, 'How To Use / Help')
 
         self.create_dictionary_tab()
         self.create_word_generator_tab()
         self.create_grammar_tab()
+        self.create_ipa_tab()
         self.create_statistics_tab()
         self.create_help_tab()
 
@@ -300,6 +244,7 @@ class ConlangDictionaryApp(QMainWindow):
         fileMenu = self.menu_bar.addMenu("&File")
         settingsMenu = self.menu_bar.addMenu("Settings")
         projectMenu = self.menu_bar.addMenu("Project")
+        featureRequestMenu = self.menu_bar.addMenu("Feature Request")
 
         open_new_action = QAction("Open/New Project", self)
         open_new_action.triggered.connect(self.open_make_new_project)
@@ -329,17 +274,21 @@ class ConlangDictionaryApp(QMainWindow):
         import_zip.triggered.connect(self.import_from_zip)
         fileMenu.addAction(import_zip)
 
-        set_dark_mode = QAction("Darkmode", self)
+        set_dark_mode = QAction("Dark Mode", self)
         set_dark_mode.triggered.connect(self.set_dark_mode)
         settingsMenu.addAction(set_dark_mode)
 
-        set_light_mode = QAction("Lightmode", self)
+        set_light_mode = QAction("Light Mode", self)
         set_light_mode.triggered.connect(self.set_light_mode)
         settingsMenu.addAction(set_light_mode)
 
-        import_font = QAction("Import .ttf Font", self)
+        import_font = QAction("Import Font", self)
         import_font.triggered.connect(self.add_font_script)
         projectMenu.addAction(import_font)
+
+        feature_request = QAction("Request a Feature", self)
+        feature_request.triggered.connect(self.make_feature_request)
+        featureRequestMenu.addAction(feature_request)
 
     def create_dictionary_tab(self):
         main_layout = QHBoxLayout(self.tab_dictionary)
@@ -390,6 +339,10 @@ class ConlangDictionaryApp(QMainWindow):
         manage_tags_button.clicked.connect(self.manage_tags)
         search_frame_layout.addWidget(manage_tags_button)
 
+        pos_button = QPushButton("Manage Parts of Speech")
+        pos_button.clicked.connect(self.manage_pos)
+        search_frame_layout.addWidget(pos_button)
+
         clear_button = QPushButton("Clear Filters / Show All")
         clear_button.clicked.connect(self.clear_filters)
         search_frame_layout.addWidget(clear_button)
@@ -435,14 +388,11 @@ class ConlangDictionaryApp(QMainWindow):
         edit_button.clicked.connect(self.edit_word)
         add_button = QPushButton("Add Word")
         add_button.clicked.connect(lambda: self.add_word(flag=True))
-        pos_button = QPushButton("Manage Parts of Speech")
-        pos_button.clicked.connect(self.manage_pos)
         font_toggle_button = QPushButton("Toggle Custom Font")
         font_toggle_button.clicked.connect(self.toggle_font)
         button_frame.addWidget(delete_button)
         button_frame.addWidget(edit_button)
         button_frame.addWidget(add_button)
-        button_frame.addWidget(pos_button)
         button_frame.addWidget(font_toggle_button)
         button_frame.addStretch(1)
         dict_frame_layout.addLayout(button_frame)
@@ -498,6 +448,44 @@ class ConlangDictionaryApp(QMainWindow):
         etym_tab_layout.addWidget(roots_frame)
         etym_tab_layout.addWidget(derived_frame)
         self.details_notebook.addTab(etym_tab, "Etymology")
+
+        # Lexical Relations Tab
+        lex_rel_tab = QWidget()
+        lex_rel_tab_layout = QHBoxLayout(lex_rel_tab)
+
+        # Synonyms Group
+        synonyms_frame = QGroupBox("Synonyms")
+        synonyms_frame_layout = QVBoxLayout(synonyms_frame)
+        self.synonyms_listbox = QListWidget()
+        self.synonyms_listbox.itemDoubleClicked.connect(self.jump_to_word_from_listbox)
+        synonyms_frame_layout.addWidget(self.synonyms_listbox)
+        synonyms_btn_layout = QHBoxLayout()
+        add_synonym_btn = QPushButton("Add Synonym")
+        add_synonym_btn.clicked.connect(lambda: self.add_lex_rel_link('synonym'))
+        del_synonym_btn = QPushButton("Remove Synonym")
+        del_synonym_btn.clicked.connect(lambda: self.remove_lex_rel_link('synonym'))
+        synonyms_btn_layout.addWidget(add_synonym_btn)
+        synonyms_btn_layout.addWidget(del_synonym_btn)
+        synonyms_frame_layout.addLayout(synonyms_btn_layout)
+
+        # Antonyms Group
+        antonyms_frame = QGroupBox("Antonyms")
+        antonyms_frame_layout = QVBoxLayout(antonyms_frame)
+        self.antonyms_listbox = QListWidget()
+        self.antonyms_listbox.itemDoubleClicked.connect(self.jump_to_word_from_listbox)
+        antonyms_frame_layout.addWidget(self.antonyms_listbox)
+        antonyms_btn_layout = QHBoxLayout()
+        add_antonym_btn = QPushButton("Add Antonym")
+        add_antonym_btn.clicked.connect(lambda: self.add_lex_rel_link('antonym'))
+        del_antonym_btn = QPushButton("Remove Antonym")
+        del_antonym_btn.clicked.connect(lambda: self.remove_lex_rel_link('antonym'))
+        antonyms_btn_layout.addWidget(add_antonym_btn)
+        antonyms_btn_layout.addWidget(del_antonym_btn)
+        antonyms_frame_layout.addLayout(antonyms_btn_layout)
+
+        lex_rel_tab_layout.addWidget(synonyms_frame)
+        lex_rel_tab_layout.addWidget(antonyms_frame)
+        self.details_notebook.addTab(lex_rel_tab, "Lexical Relations")
 
         right_panel_layout.addWidget(self.details_notebook)
         main_layout.addWidget(right_panel, 1)
@@ -689,6 +677,31 @@ class ConlangDictionaryApp(QMainWindow):
         main_splitter.addWidget(tables_frame)
         main_splitter.setSizes([300, 500])
 
+    def create_ipa_tab(self):
+        self.pc_table = IPATable(PC_TABLE_DATA, 9, 12, self)
+        self.npc_table = IPATable(NPC_TABLE_DATA, 6, 3, self, 1)
+        self.v_table = IPATable(V_TABLE_DATA, 8, 6, self)
+        self.oa_table = IPATable(OA_TABLE_DATA, 11, 2, self, 1)
+
+        self.pc_table.setFixedHeight(350)
+        self.npc_table.setFixedHeight(230)
+        self.v_table.setFixedHeight(310)
+        self.oa_table.setFixedHeight(430)
+
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.addWidget(self.pc_table)
+        container_layout.addWidget(self.npc_table)
+        container_layout.addWidget(self.v_table)
+        container_layout.addWidget(self.oa_table)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(container_widget)
+
+        layout = QVBoxLayout(self.tab_ipa)
+        layout.addWidget(scroll_area)
+
     def create_statistics_tab(self):
         layout = QVBoxLayout(self.tab_stats)
         self.stats_text = QTextEdit()
@@ -707,77 +720,9 @@ class ConlangDictionaryApp(QMainWindow):
         help_text_widget.setReadOnly(True)
         layout.addWidget(help_text_widget)
 
-        help_content = """Welcome to the Conlang Dictionary Builder!
+        help_text_widget.setText(help_text)
 
-This application helps you create, manage, and explore your constructed language. Here's a quick guide to its features.
-
-== Menu Bar ==
-
-* File:
-    - Open/New Project: Open or create a new conlang project.
-    - Rename Project: Renames the current conlang project.
-    - Delete Project: Deletes the current conlang project.
-    - Export as CSV: Exports just the dictionary as a CSV file.
-    - Export as ZIP: Exports all the project's .json save file in a .zip to move projects to other computers.
-    - Import as ZIP: Opens an exported .zip file and makes a new project with the name of the .zip file and automatically populates it with the data contained in the .zip file.
-
-* Settings:
-    - Darkmode: Sets the program to darkmode and saves this setting.
-    - Lightmode: Sets the program to lightmode and saves this setting.
-
-== Dictionary Tab ==
-
-* Search & Filter:
-    - Search Term: Type to search in either the Conlang or English words.
-    - Filter by Part of Speech: Select a Part of Speech to see only words of that type.
-    - Filter by Tags: Select one or more tags to find words that have ALL of those tags.
-    - Manage Tags: Add or remove tags from the global list. This does not remove tags from words that already use them.
-    - Clear Filters: Resets all search and filter fields.
-
-* Word List: This is the main list of your words.
-    - Double-click (or select and click "Edit Selected") to edit a word.
-    - Single-click to select a word and view its details below.
-    - Delete Selected: Permanently deletes the selected word.
-    - Add Word: Adds a new word. "Conlang Word" and "English Translation" are required. You can add multiple English translations by separating them with a comma (e.g., "set, place").
-    - Manage Parts of Speech: Add or remove parts of speech to fit the needs of your conlang.
-
-* Description Tab: Shows the "Description" notes for the selected word.
-
-* Etymology Tab: Tracks word origins.
-    - Root Words: Words that THIS word comes from (e.g., "walk" is a root of "walking").
-    - Derived Words: Words that come from THIS word (e.g., "walking" is derived from "walk").
-    - Adding/Removing: Use the buttons to link words. This creates a two-way link (adding a root to Word A automatically adds Word A as a derivative of Word B).
-    - Jump to Word: Double-click a word in the "Roots" or "Derived" list to jump to it in the main dictionary.
-
-== Word Generator Tab ==
-
-* Generate Random Words:
-    - Generation Rules: This is based on a site called Kozuka (creator: https://github.com/auctumnus). It follows the same rules and they already made a very good page explaining them so view rules here: https://kozuka.kmwc.org/help.html
-    - Using Output: Double click on one of the generated words to automatically open up an Add Word window with it autofilled into the conlang field.
-    - Save/Load Presets: Save and load generator presets to keep your custom settings between sessions.
-
-== Grammar Appendix Tab ==
-
-This tab is for your language's documentation.
-
-* Grammar Rules: A single, large text box for your general notes (phonology, syntax, etc.).
-    - IMPORTANT: This text is NOT saved automatically. You must click the "Save Rules" button to save your changes.
-
-* Grammar Tables: A place to store multiple, separate tables (e.g., verb conjugations, noun declensions).
-    - Create Table: Prompts you for a name and size and creates a new, blank table.
-    - Delete Table: Deletes the selected table.
-    - Editor: Click a table name to load it into the text editor on the right.
-    - IMPORTANT: Changes to a table are NOT saved automatically. You must click "Save Current Table" to save your changes to the selected table.
-
-== Saving Your Data ==
-
-* Dictionary: Your dictionary is automatically saved to conlang_dictionary.json every time you add, edit, or delete a word.
-* Grammar: Your grammar rules and tables are saved to conlang_grammar.json ONLY when you click the "Save Rules" or "Save Current Table" buttons.
-* Tags: Your tag list is saved to conlang_tags.json when you add or remove tags via the "Manage Tags" window.
-"""
-        help_text_widget.setText(help_content)
-
-    # --- Dictionary Methods ---
+    # --- Dictionary Page ---
 
     def populate_dictionary_list(self, entries):
         self.tree.setSortingEnabled(False)
@@ -859,47 +804,59 @@ This tab is for your language's documentation.
         self.populate_dictionary_list(filtered_list)
 
     def add_word(self, word=None, flag=None):
-        dialog = AddWordDialog(word=word, word_classes=self.word_classes, parent=self)
-        if dialog.exec():
-            new_data = dialog.new_entry_data
+        self.add_word_dialog = AddWordDialog(word=word, word_classes=self.word_classes, parent=self)
+        self.add_word_dialog.accepted.connect(lambda: self._process_new_word(flag))
+        self.add_word_dialog.show()
 
-            conlang_word = new_data["conlang"]
-            english_words = new_data["english"]
-            pos = new_data["pos"]
-            description = new_data["description"]
-            tags_list = new_data["tags"]
+    def _process_new_word(self, flag=None):
+        new_data = self.add_word_dialog.new_entry_data
 
-            if not conlang_word or not english_words:
-                QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
-                return
+        if not new_data:
+            return
 
-            if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
-                QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
-                return
+        conlang_word = new_data["conlang"]
+        english_words = new_data["english"]
+        pos = new_data["pos"]
+        description = new_data["description"]
+        tags_list = new_data["tags"]
+        ipa = new_data["ipa"]
+        syllable = new_data["syllable"]
 
-            if not pos:
-                QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
-                return
+        if not conlang_word or not english_words:
+            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+            return
 
-            self._update_tags(tags_list)
+        if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
+            QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
+            return
 
-            new_entry = {
-                "conlang": conlang_word,
-                "english": english_words,
-                "pos": pos,
-                "description": description,
-                "tags": tags_list,
-                "roots": [],
-                "derived": []
-            }
-            self.dictionary.append(new_entry)
-            self.save_dictionary()
-            self.update_word_display()
+        if not pos:
+            QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
+            return
 
-            if flag:
-                self.select_word_in_table(conlang_word)
+        self._update_tags(tags_list)
 
-            self.refresh_stats_page()
+        new_entry = {
+            "conlang": conlang_word,
+            "english": english_words,
+            "pos": pos,
+            "description": description,
+            "tags": tags_list,
+            "roots": [],
+            "derived": [],
+            "ipa": ipa,
+            "syllable": syllable,
+            "synonyms": [],
+            "antonyms": []
+        }
+        self.dictionary.append(new_entry)
+        self.save_dictionary()
+        self.update_word_display()
+
+        if flag:
+            self.select_word_in_table(conlang_word)
+
+        self.refresh_stats_page()
 
     def delete_word(self):
         selected_row = self.tree.currentRow()
@@ -909,7 +866,9 @@ This tab is for your language's documentation.
 
         conlang_word = self.tree.item(selected_row, 0).text()
         entry_to_delete = self.get_entry(conlang_word)
-        if not entry_to_delete: return
+
+        if not entry_to_delete:
+            return
 
         reply = QMessageBox.question(
             self,
@@ -943,44 +902,61 @@ This tab is for your language's documentation.
             return
 
         conlang_word = self.tree.item(selected_row, 0).text()
-        entry_to_edit = self.get_entry(conlang_word)
-        if not entry_to_edit:
+        self.entry_to_edit = self.get_entry(conlang_word)
+        if not self.entry_to_edit:
             return
 
-        dialog = EditWordDialog(entry_to_edit, self.word_classes, self)
-        if dialog.exec():
-            new_data = dialog.new_entry_data
-            if not new_data: return
+        self.delete_word_dialog = EditWordDialog(self.entry_to_edit, self.word_classes, self)
+        self.delete_word_dialog.accepted.connect(lambda: self._process_edit_word())
+        self.delete_word_dialog.show()
 
-            old_conlang = entry_to_edit['conlang']
-            new_conlang = new_data['conlang']
+    def _process_edit_word(self):
+        new_data = self.delete_word_dialog.new_entry_data
+        if not new_data:
+            return
 
-            if new_conlang.lower() != old_conlang.lower() and any(
-                    e['conlang'].lower() == new_conlang.lower() for e in self.dictionary):
-                QMessageBox.critical(self, "Error", "The new conlang word already exists.")
-                return
+        old_conlang = self.entry_to_edit['conlang']
+        new_conlang = new_data['conlang']
 
-            self._update_tags(new_data['tags'])
+        if new_conlang.lower() != old_conlang.lower() and any(
+                e['conlang'].lower() == new_conlang.lower() for e in self.dictionary
+        ):
+            QMessageBox.critical(self, "Error", "The new conlang word already exists.")
+            return
 
-            entry_to_edit.update(new_data)
+        self._update_tags(new_data['tags'])
 
-            if new_conlang != old_conlang:
-                for root_word in entry_to_edit.get('roots', []):
-                    root_entry = self.get_entry(root_word)
-                    if root_entry and old_conlang in root_entry.get('derived', []):
-                        root_entry['derived'].remove(old_conlang)
-                        root_entry['derived'].append(new_conlang)
+        self.entry_to_edit.update(new_data)
 
-                for derived_word in entry_to_edit.get('derived', []):
-                    derived_entry = self.get_entry(derived_word)
-                    if derived_entry and old_conlang in derived_entry.get('roots', []):
-                        derived_entry['roots'].remove(old_conlang)
-                        derived_entry['roots'].append(new_conlang)
+        if new_conlang != old_conlang:
+            for root_word in self.entry_to_edit.get('roots', []):
+                root_entry = self.get_entry(root_word)
+                if root_entry and old_conlang in root_entry.get('derived', []):
+                    root_entry['derived'].remove(old_conlang)
+                    root_entry['derived'].append(new_conlang)
 
-            self.save_dictionary()
-            self.update_word_display()
-            self.select_word_in_table(new_conlang)
-            self.refresh_stats_page()
+            for derived_word in self.entry_to_edit.get('derived', []):
+                derived_entry = self.get_entry(derived_word)
+                if derived_entry and old_conlang in derived_entry.get('roots', []):
+                    derived_entry['roots'].remove(old_conlang)
+                    derived_entry['roots'].append(new_conlang)
+
+            for synonym_word in self.entry_to_edit.get('synonyms', []):
+                synonym_entry = self.get_entry(synonym_word)
+                if synonym_entry and old_conlang in synonym_entry.get('synonyms', []):
+                    synonym_entry['synonyms'].remove(old_conlang)
+                    synonym_entry['synonyms'].append(new_conlang)
+
+            for antonym_word in self.entry_to_edit.get('antonyms', []):
+                antonym_entry = self.get_entry(antonym_word)
+                if antonym_entry and old_conlang in antonym_entry.get('antonyms', []):
+                    antonym_entry['antonyms'].remove(old_conlang)
+                    antonym_entry['antonyms'].append(new_conlang)
+
+        self.save_dictionary()
+        self.update_word_display()
+        self.select_word_in_table(new_conlang)
+        self.refresh_stats_page()
 
     def on_item_double_click(self, item):
         self.edit_word()
@@ -994,10 +970,70 @@ This tab is for your language's documentation.
             conlang_word = self.tree.item(selected_row, 0).text()
             entry = self.get_entry(conlang_word)
             if entry:
-                description = entry.get('description', '')
+                english_words = ""
+                counter = 0
+                for word in entry['english']:
+                    english_words += word
+                    if counter != len(entry['english']) - 1:
+                        english_words += ", "
+                    counter += 1
+
+                if self.custom_font_on:
+                    if self.font:
+                        description = (
+                            f"<p style='font-size: 14pt'>"
+                            f"<span style='font-family: \"{self.font_family_name}\"; font-size: 24pt; color: #2a82da;'>"
+                            f"{entry['conlang']}<br>"
+                            f"</span>"
+                            f"({english_words})<br>"
+                        )
+
+                        if entry['syllable']:
+                            description += f"{entry['syllable']}<br>"
+                        if entry['ipa']:
+                            description += f"/{entry['ipa']}/<br>"
+
+                        description += f"{entry['pos']}<br>"
+                        description += f"{entry['description']}"
+                        description += f"</p>"
+                    else:
+                        description = (
+                            f"<p style='font-size: 14pt'>"
+                            f"<span style='font-size: 24pt; color: #2a82da;'>"
+                            f"{entry['conlang']}<br>"
+                            f"</span>"
+                            f"({english_words})<br>"
+                        )
+
+                        if entry['syllable']:
+                            description += f"{entry['syllable']}<br>"
+                        if entry['ipa']:
+                            description += f"/{entry['ipa']}/<br>"
+
+                        description += f"{entry['pos']}<br>"
+                        description += f"{entry['description']}"
+                        description += f"</p>"
+                else:
+                    description = (
+                        f"<p style='font-size: 14pt'>"
+                        f"<span style='font-size: 24pt; color: #2a82da;'>"
+                        f"{entry['conlang']}<br>"
+                        f"</span>"
+                        f"({english_words})<br>"
+                    )
+
+                    if entry['syllable']:
+                        description += f"{entry['syllable']}<br>"
+                    if entry['ipa']:
+                        description += f"/{entry['ipa']}/<br>"
+
+                    description += f"{entry['pos']}<br>"
+                    description += f"{entry['description']}"
+                    description += f"</p>"
 
         self.display_description_text.setText(description)
         self.update_etymology_display(entry)
+        self.update_lex_rel_display(entry)
 
     def clear_filters(self):
         self.search_entry.clear()
@@ -1052,8 +1088,18 @@ This tab is for your language's documentation.
             self.update_filter_pos_listbox()
 
     def toggle_font(self):
+        flag = False
+
+        if self.tree.currentRow() != -1:
+            flag = True
+            row = self.tree.currentRow()
+            item = self.tree.item(row, 0).text()
+
         self.custom_font_on = not self.custom_font_on
         self.update_word_display()
+
+        if flag:
+            self.select_word_in_table(item)
 
     def get_entry(self, conlang_word):
         return next((item for item in self.dictionary if item["conlang"].lower() == conlang_word.lower()), None)
@@ -1076,10 +1122,11 @@ This tab is for your language's documentation.
 
         selected_word_id = self.tree.item(selected_row, 0).text()
         entry_A = self.get_entry(selected_word_id)
-        if not entry_A: return
+        if not entry_A:
+            return
 
         prompt = f"Enter the conlang word that is a {link_type} of '{selected_word_id}':"
-        word_B_name, ok = QInputDialog.getText(self, "Add Etymology Link", prompt)
+        word_B_name, ok = QInputDialog.getText(self.tree, "Add new Etymology", prompt)
 
         if not ok or not word_B_name or word_B_name.strip() == "":
             return
@@ -1096,23 +1143,33 @@ This tab is for your language's documentation.
             return
 
         if link_type == 'root':
-            if word_B_name not in entry_A['roots']: entry_A['roots'].append(word_B_name)
-            if selected_word_id not in entry_B['derived']: entry_B['derived'].append(selected_word_id)
+            if word_B_name not in entry_A['roots']:
+                entry_A['roots'].append(word_B_name)
+            if selected_word_id not in entry_B['derived']:
+                entry_B['derived'].append(selected_word_id)
         elif link_type == 'derived':
-            if word_B_name not in entry_A['derived']: entry_A['derived'].append(word_B_name)
-            if selected_word_id not in entry_B['roots']: entry_B['roots'].append(selected_word_id)
+            if word_B_name not in entry_A['derived']:
+                entry_A['derived'].append(word_B_name)
+            if selected_word_id not in entry_B['roots']:
+                entry_B['roots'].append(selected_word_id)
 
         self.save_dictionary()
         self.update_etymology_display(entry_A)
 
     def remove_etymology_link(self, link_type):
         selected_row = self.tree.currentRow()
-        if selected_row == -1: return
+        if selected_row == -1:
+            return
 
         entry_A = self.get_entry(self.tree.item(selected_row, 0).text())
-        if not entry_A: return
+        if not entry_A:
+            return
 
-        listbox = self.roots_listbox if link_type == 'root' else self.derived_listbox
+        if link_type == 'root':
+            listbox = self.roots_listbox
+        else:
+            listbox = self.derived_listbox
+
         selected_items = listbox.selectedItems()
 
         if not selected_items:
@@ -1125,16 +1182,109 @@ This tab is for your language's documentation.
         selected_word_id = entry_A['conlang']
 
         if link_type == 'root':
-            if word_B_name in entry_A['roots']: entry_A['roots'].remove(word_B_name)
+            if word_B_name in entry_A['roots']:
+                entry_A['roots'].remove(word_B_name)
             if entry_B and selected_word_id in entry_B['derived']:
                 entry_B['derived'].remove(selected_word_id)
         elif link_type == 'derived':
-            if word_B_name in entry_A['derived']: entry_A['derived'].remove(word_B_name)
+            if word_B_name in entry_A['derived']:
+                entry_A['derived'].remove(word_B_name)
             if entry_B and selected_word_id in entry_B['roots']:
                 entry_B['roots'].remove(selected_word_id)
 
         self.save_dictionary()
         self.update_etymology_display(entry_A)
+
+    def update_lex_rel_display(self, entry):
+        self.synonyms_listbox.clear()
+        self.antonyms_listbox.clear()
+
+        if entry:
+            for synonym_word in sorted(entry.get('synonyms', [])):
+                self.synonyms_listbox.addItem(synonym_word)
+            for antonym_word in sorted(entry.get('antonyms', [])):
+                self.antonyms_listbox.addItem(antonym_word)
+
+    def add_lex_rel_link(self, link_type):
+        selected_row = self.tree.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "No Word Selected", "Please select a word to add a link to.")
+            return
+
+        selected_word_id = self.tree.item(selected_row, 0).text()
+        entry_A = self.get_entry(selected_word_id)
+        if not entry_A:
+            return
+
+        prompt = f"Enter the conlang word that is a {link_type} of '{selected_word_id}':"
+        word_B_name, ok = QInputDialog.getText(self.tree, f"Add new {link_type}", prompt)
+
+        if not ok or not word_B_name or word_B_name.strip() == "":
+            return
+
+        word_B_name = word_B_name.strip()
+
+        if word_B_name.lower() == selected_word_id.lower():
+            QMessageBox.warning(self, "Self-Link", f"A word cannot be its own {link_type}.")
+            return
+
+        entry_B = self.get_entry(word_B_name)
+        if not entry_B:
+            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist in the dictionary.")
+            return
+
+        if link_type == 'synonym':
+            if word_B_name not in entry_A['synonyms']:
+                entry_A['synonyms'].append(word_B_name)
+            if selected_word_id not in entry_B['synonyms']:
+                entry_B['synonyms'].append(selected_word_id)
+        elif link_type == 'antonym':
+            if word_B_name not in entry_A['antonyms']:
+                entry_A['antonyms'].append(word_B_name)
+            if selected_word_id not in entry_B['antonyms']:
+                entry_B['antonyms'].append(selected_word_id)
+
+        self.save_dictionary()
+        self.update_lex_rel_display(entry_A)
+
+    def remove_lex_rel_link(self, link_type):
+        selected_row = self.tree.currentRow()
+        if selected_row == -1:
+            return
+
+        entry_A = self.get_entry(self.tree.item(selected_row, 0).text())
+        if not entry_A:
+            return
+
+        if link_type == 'synonym':
+            listbox = self.synonyms_listbox
+        else:
+            listbox = self.antonyms_listbox
+
+        selected_items = listbox.selectedItems()
+
+        if not selected_items:
+            QMessageBox.warning(self, "No Link Selected", f"Please select a {link_type} word to remove.")
+            return
+
+        word_B_name = selected_items[0].text()
+        entry_B = self.get_entry(word_B_name)
+
+        selected_word_id = entry_A['conlang']
+
+        if link_type == 'synonym':
+            if word_B_name in entry_A['synonyms']:
+                entry_A['synonyms'].remove(word_B_name)
+            if entry_B and selected_word_id in entry_B['synonyms']:
+                entry_B['synonyms'].remove(selected_word_id)
+        elif link_type == 'antonyms':
+            if word_B_name in entry_A['antonyms']:
+                entry_A['antonyms'].remove(word_B_name)
+            if entry_B and selected_word_id in entry_B['antonyms']:
+                entry_B['antonyms'].remove(selected_word_id)
+
+        self.save_dictionary()
+        self.update_lex_rel_display(entry_A)
 
     def select_word_in_table(self, conlang_word):
         """Finds and selects a word in the main QTableWidget."""
@@ -1160,7 +1310,7 @@ This tab is for your language's documentation.
 
         QMessageBox.warning(self, "Link Error", f"The word '{word_to_find}' seems to be missing or filtered.")
 
-    # --- Grammar Rules ---
+    # --- Grammar Page ---
 
     def load_grammar_rules(self):
         self.grammar_rules_text.setText(self.grammar_data.get('rules', ''))
@@ -1222,8 +1372,6 @@ This tab is for your language's documentation.
         Adds a new pattern row (name, pattern, remove button) to the layout.
         Optionally populates it with initial name and pattern data.
         """
-        print(name)
-        print(pattern)
 
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
@@ -1371,6 +1519,12 @@ This tab is for your language's documentation.
     def open_make_new_project(self):
         dialog = OpenProjectDialog(self, flag=True)
         if dialog.exec():
+            self.update_version()
+
+            self.db_path = os.path.join(self.app_data_dir, "project.db")
+            self.db = DatabaseManager(self.db_path)
+            self.db.migrate_from_json(self.app_data_dir)
+
             self.dictionary = self.load_dictionary()
             self.all_tags, self.word_classes = self.load_tags()
             self.grammar_data = self.load_grammar()
@@ -1383,6 +1537,7 @@ This tab is for your language's documentation.
             self.load_grammar_rules()
 
             self.refresh_stats_page()
+            self.main_notebook.setCurrentIndex(0)
 
     def rename_project(self):
         dialog = RenameProjectDialog(self)
@@ -1391,16 +1546,52 @@ This tab is for your language's documentation.
     def delete_project(self):
         dialog = ImportantWarningDialog("Are you sure you wish to delete this project?", self)
         if dialog.exec():
-            shutil.rmtree(self.app_data_dir)
+            if hasattr(self, 'db') and self.db is not None:
+                if hasattr(self.db, 'close'):
+                    self.db.close()
+                elif hasattr(self.db, 'conn'):
+                    self.db.conn.close()
+                self.db = None
 
-        self.open_make_new_project()
+            try:
+                shutil.rmtree(self.app_data_dir)
+            except OSError as e:
+                QMessageBox.critical(self, "Deletion Error", f"Could not delete project folder:\n{e}")
+                return
+
+            open_dialog = OpenProjectDialog(self, True)
+            open_dialog.exec()
+
+            self.update_version()
+
+            self.db_path = os.path.join(self.app_data_dir, "project.db")
+            self.db = DatabaseManager(self.db_path)
+            self.db.migrate_from_json(self.app_data_dir)
+
+            self.dictionary = self.load_dictionary()
+            self.all_tags, self.word_classes = self.load_tags()
+            self.grammar_data = self.load_grammar()
+            self.presents = self.load_presents()
+            self.font = self.load_font()
+            if self.font_file:
+                self.font_family_name = process_font(self.font_file)
+            else:
+                self.font_family_name = ""
+
+            self.update_word_display()
+            self.update_tag_filter_listbox()
+            self.update_grammar_table_listbox()
+            self.load_grammar_rules()
+
+            self.refresh_stats_page()
+            self.main_notebook.setCurrentIndex(0)
 
     def save_csv_file(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
 
         if file_name:
             try:
-                with open(f"{file_name}.csv", "w") as f:
+                with open(f"{file_name}", "w") as f:
                     headers = ['conlang', 'english', 'pos', 'description', 'tags', 'roots', 'derived']
 
                     writer = csv.DictWriter(f, fieldnames=headers)
@@ -1411,11 +1602,15 @@ This tab is for your language's documentation.
                         row_data = {
                             'conlang': entry.get('conlang', ''),
                             'english': '|'.join(entry.get('english', [])),
+                            'syllabication': '|'.join(entry.get('syllable', '')),
+                            'ipa': '|'.join(entry.get('ipa', '')),
                             'pos': entry.get('pos', ''),
                             'description': entry.get('description', ''),
                             'tags': '|'.join(entry.get('tags', [])),
                             'roots': '|'.join(entry.get('roots', [])),
-                            'derived': '|'.join(entry.get('derived', []))
+                            'derived': '|'.join(entry.get('derived', [])),
+                            'synonyms': '|'.join(entry.get('synonyms', [])),
+                            'antonyms': '|'.join(entry.get('antonyms', []))
                         }
 
                         writer.writerow(row_data)
@@ -1438,61 +1633,48 @@ This tab is for your language's documentation.
 
         if file_name:
             try:
-                if file_name.split("/")[-1].split(".")[0] in get_folder_names(self.app_data_master_dir):
+                project_name = file_name.split("/")[-1].split(".")[0]
+                new_project_dir = os.path.join(self.app_data_master_dir, project_name)
+
+                if project_name in get_folder_names(self.app_data_master_dir):
                     dialog = ImportantWarningDialog(
-                        "A project with the same name already exists! Do you wish to replace this project?"
+                        "A project with the same name already exists! Do you wish to replace this project?", self
                     )
                     if dialog.exec():
-                        clear_folder(os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0]))
-                        unzip_file(
-                            file_name, os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0])
-                        )
+                        clear_folder(new_project_dir)
+                    else:
+                        return
 
-                        self.app_data_dir = os.path.join(
-                            self.app_data_master_dir, file_name.split("/")[-1].split(".")[0]
-                        )
+                unzip_file(file_name, new_project_dir)
 
-                        self.dictionary_file = os.path.join(self.app_data_dir, "conlang_dictionary.json")
-                        self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
-                        self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
-                        self.presents_file = os.path.join(self.app_data_dir, "conlang_presents.json")
+                self.app_data_dir = new_project_dir
 
-                        self.dictionary = self.load_dictionary()
-                        self.all_tags, self.word_classes = self.load_tags()
-                        self.grammar_data = self.load_grammar()
-                        self.presents = self.load_presents()
+                self.db_path = os.path.join(self.app_data_dir, "project.db")
+                self.db = DatabaseManager(self.db_path)
 
-                        self.update_word_display()
-                        self.update_tag_filter_listbox()
-                        self.update_grammar_table_listbox()
-                        self.load_grammar_rules()
+                self.db.migrate_from_json(self.app_data_dir)
 
-                        self.refresh_stats_page()
+                self.dictionary = self.db.get_dictionary()
+                self.all_tags, self.word_classes = self.db.get_tags_and_pos()
+                self.grammar_data = self.db.get_grammar()
+                self.presents = self.db.get_presets()
 
-                else:
-                    unzip_file(
-                        file_name, os.path.join(self.app_data_master_dir, file_name.split("/")[-1].split(".")[0])
-                    )
+                self.font = self.load_font()
+                if self.font_file:
+                    self.font_family_name = process_font(self.font_file)
 
-                    self.dictionary_file = os.path.join(self.app_data_dir, "conlang_dictionary.json")
-                    self.tags_file = os.path.join(self.app_data_dir, "conlang_tags.json")
-                    self.grammar_file = os.path.join(self.app_data_dir, "conlang_grammar.json")
-                    self.presents_file = os.path.join(self.app_data_dir, "conlang_presents.json")
+                self.update_word_display()
+                self.update_tag_filter_listbox()
+                self.update_grammar_table_listbox()
+                self.load_grammar_rules()
+                self.refresh_stats_page()
 
-                    self.dictionary = self.load_dictionary()
-                    self.all_tags, self.word_classes = self.load_tags()
-                    self.grammar_data = self.load_grammar()
-                    self.presents = self.load_presents()
-
-                    self.update_word_display()
-                    self.update_tag_filter_listbox()
-                    self.update_grammar_table_listbox()
-                    self.load_grammar_rules()
-
-                    self.refresh_stats_page()
+                self.main_notebook.setCurrentIndex(0)
+                self.setWindowTitle(project_name)
+                QMessageBox.information(self, "Success", f"Project '{project_name}' imported successfully!")
 
             except Exception as e:
-                error_dialog = QErrorMessage()
+                error_dialog = QErrorMessage(self)
                 error_dialog.showMessage(f"Error importing project: {e}")
 
     def set_dark_mode(self):
@@ -1545,6 +1727,13 @@ This tab is for your language's documentation.
                     self.font = None
                 else:
                     self.font = result
+
+    def make_feature_request(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Feature Request")
+        msg.setText("Make a feature request at <a href='https://forms.gle/y6wGKhbLVQ2SP1Bo6'>this google form</a>.")
+
+        msg.exec_()
 
     # --- Tables ---
 
@@ -1642,9 +1831,12 @@ This tab is for your language's documentation.
             return
 
         num_rows, ok_r = QInputDialog.getInt(self, "Create Table", "Enter number of rows:", 3, 1, 100)
-        if not ok_r: return
+        if not ok_r:
+            return
+
         num_cols, ok_c = QInputDialog.getInt(self, "Create Table", "Enter number of columns:", 3, 1, 100)
-        if not ok_c: return
+        if not ok_c:
+            return
 
         default_data = [["" for _ in range(num_cols)] for _ in range(num_rows)]
         default_row_headers = [str(i + 1) for i in range(num_rows)]
@@ -1770,8 +1962,12 @@ This tab is for your language's documentation.
     def closeEvent(self, event):
         event.accept()
 
-    def empty(self):
-        pass # Used to give to buttons before I have a function for them to execute
+    def empty(self, value=None):
+        pass # Used to give to buttons before I have a function for them to execute so my code editor stops screaming at me
+
+    def debug(self):
+        dialog = DebugDialog(self)
+        dialog.show()
 
 
 if __name__ == "__main__":

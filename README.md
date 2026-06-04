@@ -113,3 +113,6 @@ Your conlang projects are stored locally on your computer in your user's applica
 + Linux: `/home/<YourUser>/.local/share/ConlangDictionary`
 
 Each project you create will be a subfolder in this location. The app uses a localized SQLite database (project.db) to efficiently store your dictionary, grammar tables, tags, and presets. Note: Older JSON-based projects are automatically backed up and migrated to this new database format upon opening. Your custom fonts and theme preferences are also saved directly in your project's directory.
+
+### Donations
+If you wish to donate in support of the project, you can do so [here](https://ko-fi.com/mastercheese129) on ko-fi.

@@ -46,7 +46,10 @@ class ConlangDictionaryApp(QMainWindow):
         self.font_exists = False
         self.custom_font_on = True
 
-        path = self.path.split('\\')
+        if sys.platform == "win32":
+            path = self.path.split('\\')
+        else:
+            path = self.path.split('/')
         path.remove('src')
 
         try:

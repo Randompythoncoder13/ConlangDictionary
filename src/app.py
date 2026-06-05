@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QScrollArea, QFrame, QFileDialog, QErrorMessage, QComboBox, QRadioButton, QHeaderView,
     QAbstractItemView
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence
 
 from src.dialogs import (
@@ -46,7 +46,10 @@ class ConlangDictionaryApp(QMainWindow):
         self.font_exists = False
         self.custom_font_on = True
 
-        path = self.path.split('\\')
+        if sys.platform == "win32":
+            path = self.path.split('\\')
+        else:
+            path = self.path.split('/')
         path.remove('src')
 
         try:
@@ -95,7 +98,7 @@ class ConlangDictionaryApp(QMainWindow):
             if sys.platform == "win32":
                 app_data_path = os.getenv('LOCALAPPDATA')
             elif sys.platform == "darwin":
-                app_data_path = os.getenv('~/Library/Application Support')
+                app_data_path = os.path.expanduser('~/Library/Application Support')
             else:
                 app_data_path = os.path.expanduser("~/.local/share")
             self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")

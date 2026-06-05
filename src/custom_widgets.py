@@ -1,4 +1,5 @@
 import os
+import sys
 
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QLabel, QHBoxLayout, QStyle, QToolButton, QListWidget, QSizePolicy
@@ -112,7 +113,10 @@ class IPACellWidget(QWidget):
         pyperclip.copy(self.ipa_text)
 
     def play_sound(self):
-        path = self.parent.path.split('\\')
+        if sys.platform == "win32":
+            path = self.parent.path.split('\\')
+        else:
+            path = self.parent.path.split('/')
         path.remove('src')
 
         try:

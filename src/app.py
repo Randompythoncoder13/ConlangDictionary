@@ -98,7 +98,7 @@ class ConlangDictionaryApp(QMainWindow):
             if sys.platform == "win32":
                 app_data_path = os.getenv('LOCALAPPDATA')
             elif sys.platform == "darwin":
-                app_data_path = os.getenv('~/Library/Application Support')
+                app_data_path = os.path.expanduser('~/Library/Application Support')
             else:
                 app_data_path = os.path.expanduser("~/.local/share")
             self.app_data_dir = os.path.join(app_data_path, "ConlangDictionary")

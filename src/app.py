@@ -4,6 +4,7 @@ import csv
 import shutil
 from pathlib import Path
 import json
+import uuid
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit,
@@ -16,7 +17,7 @@ from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequen
 
 from src.dialogs import (
     OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, WarningDialog, ManagePOSDialog, ManageTagsDialog,
-    EditWordDialog, AddWordDialog, DebugDialog
+    EditWordDialog, AddWordDialog, DebugDialog, WordSelectionDialog
 )
 from src.simulated_kozuka_logic import generate_words
 from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font, process_font
@@ -756,7 +757,7 @@ class ConlangDictionaryApp(QMainWindow):
             pos_item = QTableWidgetItem(entry["pos"])
             tags_item = QTableWidgetItem(tags_str)
 
-            conlang_item.setData(Qt.ItemDataRole.UserRole, entry["conlang"])
+            conlang_item.setData(Qt.ItemDataRole.UserRole, entry["id"])
 
             self.tree.setItem(row_position, 0, conlang_item)
             self.tree.setItem(row_position, 1, english_item)
@@ -829,10 +830,6 @@ class ConlangDictionaryApp(QMainWindow):
             QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
             return
 
-        if any(entry['conlang'].lower() == conlang_word.lower() for entry in self.dictionary):
-            QMessageBox.warning(self, "Duplicate Entry", f"The word '{conlang_word}' already exists.")
-            return
-
         if not pos:
             QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
             return
@@ -840,6 +837,7 @@ class ConlangDictionaryApp(QMainWindow):
         self._update_tags(tags_list)
 
         new_entry = {
+            "id": str(uuid.uuid4()),
             "conlang": conlang_word,
             "english": english_words,
             "pos": pos,
@@ -857,7 +855,7 @@ class ConlangDictionaryApp(QMainWindow):
         self.update_word_display()
 
         if flag:
-            self.select_word_in_table(conlang_word)
+            self.select_word_in_table(new_entry["id"])
 
         self.refresh_stats_page()
 
@@ -868,7 +866,8 @@ class ConlangDictionaryApp(QMainWindow):
             return
 
         conlang_word = self.tree.item(selected_row, 0).text()
-        entry_to_delete = self.get_entry(conlang_word)
+        word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        entry_to_delete = self.get_entry_by_id(word_id)
 
         if not entry_to_delete:
             return
@@ -882,15 +881,25 @@ class ConlangDictionaryApp(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            for root_word in entry_to_delete.get('roots', []):
-                root_entry = self.get_entry(root_word)
-                if root_entry and conlang_word in root_entry.get('derived', []):
-                    root_entry['derived'].remove(conlang_word)
+            for root_id in entry_to_delete.get('roots', []):
+                root_entry = self.get_entry_by_id(root_id)
+                if root_entry and word_id in root_entry.get('derived', []):
+                    root_entry['derived'].remove(word_id)
 
-            for derived_word in entry_to_delete.get('derived', []):
-                derived_entry = self.get_entry(derived_word)
-                if derived_entry and conlang_word in derived_entry.get('roots', []):
-                    derived_entry['roots'].remove(conlang_word)
+            for derived_id in entry_to_delete.get('derived', []):
+                derived_entry = self.get_entry_by_id(derived_id)
+                if derived_entry and word_id in derived_entry.get('roots', []):
+                    derived_entry['roots'].remove(word_id)
+
+            for syn_id in entry_to_delete.get('synonyms', []):
+                syn_entry = self.get_entry_by_id(syn_id)
+                if syn_entry and word_id in syn_entry.get('synonyms', []):
+                    syn_entry['synonyms'].remove(word_id)
+
+            for ant_id in entry_to_delete.get('antonyms', []):
+                ant_entry = self.get_entry_by_id(ant_id)
+                if ant_entry and word_id in ant_entry.get('antonyms', []):
+                    ant_entry['antonyms'].remove(word_id)
 
             self.dictionary.remove(entry_to_delete)
             self.save_dictionary()
@@ -904,8 +913,8 @@ class ConlangDictionaryApp(QMainWindow):
             QMessageBox.warning(self, "Selection Error", "Please select a word to edit.")
             return
 
-        conlang_word = self.tree.item(selected_row, 0).text()
-        self.entry_to_edit = self.get_entry(conlang_word)
+        word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        self.entry_to_edit = self.get_entry_by_id(word_id)
         if not self.entry_to_edit:
             return
 
@@ -918,47 +927,12 @@ class ConlangDictionaryApp(QMainWindow):
         if not new_data:
             return
 
-        old_conlang = self.entry_to_edit['conlang']
-        new_conlang = new_data['conlang']
-
-        if new_conlang.lower() != old_conlang.lower() and any(
-                e['conlang'].lower() == new_conlang.lower() for e in self.dictionary
-        ):
-            QMessageBox.critical(self, "Error", "The new conlang word already exists.")
-            return
-
         self._update_tags(new_data['tags'])
-
         self.entry_to_edit.update(new_data)
-
-        if new_conlang != old_conlang:
-            for root_word in self.entry_to_edit.get('roots', []):
-                root_entry = self.get_entry(root_word)
-                if root_entry and old_conlang in root_entry.get('derived', []):
-                    root_entry['derived'].remove(old_conlang)
-                    root_entry['derived'].append(new_conlang)
-
-            for derived_word in self.entry_to_edit.get('derived', []):
-                derived_entry = self.get_entry(derived_word)
-                if derived_entry and old_conlang in derived_entry.get('roots', []):
-                    derived_entry['roots'].remove(old_conlang)
-                    derived_entry['roots'].append(new_conlang)
-
-            for synonym_word in self.entry_to_edit.get('synonyms', []):
-                synonym_entry = self.get_entry(synonym_word)
-                if synonym_entry and old_conlang in synonym_entry.get('synonyms', []):
-                    synonym_entry['synonyms'].remove(old_conlang)
-                    synonym_entry['synonyms'].append(new_conlang)
-
-            for antonym_word in self.entry_to_edit.get('antonyms', []):
-                antonym_entry = self.get_entry(antonym_word)
-                if antonym_entry and old_conlang in antonym_entry.get('antonyms', []):
-                    antonym_entry['antonyms'].remove(old_conlang)
-                    antonym_entry['antonyms'].append(new_conlang)
 
         self.save_dictionary()
         self.update_word_display()
-        self.select_word_in_table(new_conlang)
+        self.select_word_in_table(self.entry_to_edit["id"])
         self.refresh_stats_page()
 
     def on_item_double_click(self, item):
@@ -970,8 +944,8 @@ class ConlangDictionaryApp(QMainWindow):
         entry = None
 
         if selected_row != -1:
-            conlang_word = self.tree.item(selected_row, 0).text()
-            entry = self.get_entry(conlang_word)
+            word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+            entry = self.get_entry_by_id(word_id)
             if entry:
                 english_words = ""
                 counter = 0
@@ -1104,214 +1078,200 @@ class ConlangDictionaryApp(QMainWindow):
         if flag:
             self.select_word_in_table(item)
 
-    def get_entry(self, conlang_word):
-        return next((item for item in self.dictionary if item["conlang"].lower() == conlang_word.lower()), None)
+    def get_entry_by_id(self, word_id):
+        return next((item for item in self.dictionary if item.get("id") == word_id), None)
+
+    def find_entries_by_word(self, conlang_word):
+        return [item for item in self.dictionary if item["conlang"].lower() == conlang_word.lower()]
 
     def update_etymology_display(self, entry):
         self.roots_listbox.clear()
         self.derived_listbox.clear()
 
         if entry:
-            for root_word in sorted(entry.get('roots', [])):
-                self.roots_listbox.addItem(root_word)
-            for derived_word in sorted(entry.get('derived', [])):
-                self.derived_listbox.addItem(derived_word)
+            for root_id in entry.get('roots', []):
+                root_entry = self.get_entry_by_id(root_id)
+                if root_entry:
+                    item = QListWidgetItem(root_entry['conlang'])
+                    item.setData(Qt.ItemDataRole.UserRole, root_id)
+                    self.roots_listbox.addItem(item)
 
-    def add_etymology_link(self, link_type):
-        selected_row = self.tree.currentRow()
-        if selected_row == -1:
-            QMessageBox.warning(self, "No Word Selected", "Please select a word to add a link to.")
-            return
-
-        selected_word_id = self.tree.item(selected_row, 0).text()
-        entry_A = self.get_entry(selected_word_id)
-        if not entry_A:
-            return
-
-        prompt = f"Enter the conlang word that is a {link_type} of '{selected_word_id}':"
-        word_B_name, ok = QInputDialog.getText(self.tree, "Add new Etymology", prompt)
-
-        if not ok or not word_B_name or word_B_name.strip() == "":
-            return
-
-        word_B_name = word_B_name.strip()
-
-        if word_B_name.lower() == selected_word_id.lower():
-            QMessageBox.warning(self, "Self-Link", "A word cannot be its own root or derivative.")
-            return
-
-        entry_B = self.get_entry(word_B_name)
-        if not entry_B:
-            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist in the dictionary.")
-            return
-
-        if link_type == 'root':
-            if word_B_name not in entry_A['roots']:
-                entry_A['roots'].append(word_B_name)
-            if selected_word_id not in entry_B['derived']:
-                entry_B['derived'].append(selected_word_id)
-        elif link_type == 'derived':
-            if word_B_name not in entry_A['derived']:
-                entry_A['derived'].append(word_B_name)
-            if selected_word_id not in entry_B['roots']:
-                entry_B['roots'].append(selected_word_id)
-
-        self.save_dictionary()
-        self.update_etymology_display(entry_A)
-
-    def remove_etymology_link(self, link_type):
-        selected_row = self.tree.currentRow()
-        if selected_row == -1:
-            return
-
-        entry_A = self.get_entry(self.tree.item(selected_row, 0).text())
-        if not entry_A:
-            return
-
-        if link_type == 'root':
-            listbox = self.roots_listbox
-        else:
-            listbox = self.derived_listbox
-
-        selected_items = listbox.selectedItems()
-
-        if not selected_items:
-            QMessageBox.warning(self, "No Link Selected", f"Please select a {link_type} word to remove.")
-            return
-
-        word_B_name = selected_items[0].text()
-        entry_B = self.get_entry(word_B_name)
-
-        selected_word_id = entry_A['conlang']
-
-        if link_type == 'root':
-            if word_B_name in entry_A['roots']:
-                entry_A['roots'].remove(word_B_name)
-            if entry_B and selected_word_id in entry_B['derived']:
-                entry_B['derived'].remove(selected_word_id)
-        elif link_type == 'derived':
-            if word_B_name in entry_A['derived']:
-                entry_A['derived'].remove(word_B_name)
-            if entry_B and selected_word_id in entry_B['roots']:
-                entry_B['roots'].remove(selected_word_id)
-
-        self.save_dictionary()
-        self.update_etymology_display(entry_A)
+            for derived_id in entry.get('derived', []):
+                derived_entry = self.get_entry_by_id(derived_id)
+                if derived_entry:
+                    item = QListWidgetItem(derived_entry['conlang'])
+                    item.setData(Qt.ItemDataRole.UserRole, derived_id)
+                    self.derived_listbox.addItem(item)
 
     def update_lex_rel_display(self, entry):
         self.synonyms_listbox.clear()
         self.antonyms_listbox.clear()
 
         if entry:
-            for synonym_word in sorted(entry.get('synonyms', [])):
-                self.synonyms_listbox.addItem(synonym_word)
-            for antonym_word in sorted(entry.get('antonyms', [])):
-                self.antonyms_listbox.addItem(antonym_word)
+            for syn_id in entry.get('synonyms', []):
+                syn_entry = self.get_entry_by_id(syn_id)
+                if syn_entry:
+                    item = QListWidgetItem(syn_entry['conlang'])
+                    item.setData(Qt.ItemDataRole.UserRole, syn_id)
+                    self.synonyms_listbox.addItem(item)
+
+            for ant_id in entry.get('antonyms', []):
+                ant_entry = self.get_entry_by_id(ant_id)
+                if ant_entry:
+                    item = QListWidgetItem(ant_entry['conlang'])
+                    item.setData(Qt.ItemDataRole.UserRole, ant_id)
+                    self.antonyms_listbox.addItem(item)
+
+    def add_etymology_link(self, link_type):
+        selected_row = self.tree.currentRow()
+        if selected_row == -1: return
+
+        selected_word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        entry_A = self.get_entry_by_id(selected_word_id)
+        if not entry_A: return
+
+        prompt = f"Enter the conlang word that is a {link_type} of '{entry_A['conlang']}':"
+        word_B_name, ok = QInputDialog.getText(self.tree, "Add new Etymology", prompt)
+        if not ok or not word_B_name.strip(): return
+        word_B_name = word_B_name.strip()
+
+        # Handle Homophones
+        matches = self.find_entries_by_word(word_B_name)
+        if not matches:
+            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist.")
+            return
+
+        if len(matches) > 1:
+            dialog = WordSelectionDialog(matches, self)
+            if dialog.exec():
+                word_B_id = dialog.selected_uuid
+            else:
+                return
+        else:
+            word_B_id = matches[0]["id"]
+
+        if word_B_id == selected_word_id:
+            QMessageBox.warning(self, "Self-Link", "A word cannot be its own root or derivative.")
+            return
+
+        entry_B = self.get_entry_by_id(word_B_id)
+
+        if link_type == 'root':
+            if word_B_id not in entry_A['roots']: entry_A['roots'].append(word_B_id)
+            if selected_word_id not in entry_B['derived']: entry_B['derived'].append(selected_word_id)
+        elif link_type == 'derived':
+            if word_B_id not in entry_A['derived']: entry_A['derived'].append(word_B_id)
+            if selected_word_id not in entry_B['roots']: entry_B['roots'].append(selected_word_id)
+
+        self.save_dictionary()
+        self.update_etymology_display(entry_A)
+
+    def remove_etymology_link(self, link_type):
+        selected_row = self.tree.currentRow()
+        if selected_row == -1: return
+
+        selected_word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        entry_A = self.get_entry_by_id(selected_word_id)
+        if not entry_A: return
+
+        listbox = self.roots_listbox if link_type == 'root' else self.derived_listbox
+        selected_items = listbox.selectedItems()
+        if not selected_items: return
+
+        word_B_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        entry_B = self.get_entry_by_id(word_B_id)
+
+        if link_type == 'root':
+            if word_B_id in entry_A['roots']: entry_A['roots'].remove(word_B_id)
+            if entry_B and selected_word_id in entry_B['derived']: entry_B['derived'].remove(selected_word_id)
+        elif link_type == 'derived':
+            if word_B_id in entry_A['derived']: entry_A['derived'].remove(word_B_id)
+            if entry_B and selected_word_id in entry_B['roots']: entry_B['roots'].remove(selected_word_id)
+
+        self.save_dictionary()
+        self.update_etymology_display(entry_A)
 
     def add_lex_rel_link(self, link_type):
         selected_row = self.tree.currentRow()
-        if selected_row == -1:
-            QMessageBox.warning(self, "No Word Selected", "Please select a word to add a link to.")
-            return
+        if selected_row == -1: return
 
-        selected_word_id = self.tree.item(selected_row, 0).text()
-        entry_A = self.get_entry(selected_word_id)
-        if not entry_A:
-            return
+        selected_word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        entry_A = self.get_entry_by_id(selected_word_id)
+        if not entry_A: return
 
-        prompt = f"Enter the conlang word that is a {link_type} of '{selected_word_id}':"
+        prompt = f"Enter the conlang word that is a {link_type} of '{entry_A['conlang']}':"
         word_B_name, ok = QInputDialog.getText(self.tree, f"Add new {link_type}", prompt)
-
-        if not ok or not word_B_name or word_B_name.strip() == "":
-            return
-
+        if not ok or not word_B_name.strip(): return
         word_B_name = word_B_name.strip()
 
-        if word_B_name.lower() == selected_word_id.lower():
+        # Handle Homophones
+        matches = self.find_entries_by_word(word_B_name)
+        if not matches:
+            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist.")
+            return
+
+        if len(matches) > 1:
+            dialog = WordSelectionDialog(matches, self)
+            if dialog.exec():
+                word_B_id = dialog.selected_uuid
+            else:
+                return
+        else:
+            word_B_id = matches[0]["id"]
+
+        if word_B_id == selected_word_id:
             QMessageBox.warning(self, "Self-Link", f"A word cannot be its own {link_type}.")
             return
 
-        entry_B = self.get_entry(word_B_name)
-        if not entry_B:
-            QMessageBox.critical(self, "Word Not Found", f"The word '{word_B_name}' does not exist in the dictionary.")
-            return
+        entry_B = self.get_entry_by_id(word_B_id)
 
         if link_type == 'synonym':
-            if word_B_name not in entry_A['synonyms']:
-                entry_A['synonyms'].append(word_B_name)
-            if selected_word_id not in entry_B['synonyms']:
-                entry_B['synonyms'].append(selected_word_id)
+            if word_B_id not in entry_A['synonyms']: entry_A['synonyms'].append(word_B_id)
+            if selected_word_id not in entry_B['synonyms']: entry_B['synonyms'].append(selected_word_id)
         elif link_type == 'antonym':
-            if word_B_name not in entry_A['antonyms']:
-                entry_A['antonyms'].append(word_B_name)
-            if selected_word_id not in entry_B['antonyms']:
-                entry_B['antonyms'].append(selected_word_id)
+            if word_B_id not in entry_A['antonyms']: entry_A['antonyms'].append(word_B_id)
+            if selected_word_id not in entry_B['antonyms']: entry_B['antonyms'].append(selected_word_id)
 
         self.save_dictionary()
         self.update_lex_rel_display(entry_A)
 
     def remove_lex_rel_link(self, link_type):
         selected_row = self.tree.currentRow()
-        if selected_row == -1:
-            return
+        if selected_row == -1: return
 
-        entry_A = self.get_entry(self.tree.item(selected_row, 0).text())
-        if not entry_A:
-            return
+        selected_word_id = self.tree.item(selected_row, 0).data(Qt.ItemDataRole.UserRole)
+        entry_A = self.get_entry_by_id(selected_word_id)
+        if not entry_A: return
 
-        if link_type == 'synonym':
-            listbox = self.synonyms_listbox
-        else:
-            listbox = self.antonyms_listbox
-
+        listbox = self.synonyms_listbox if link_type == 'synonym' else self.antonyms_listbox
         selected_items = listbox.selectedItems()
+        if not selected_items: return
 
-        if not selected_items:
-            QMessageBox.warning(self, "No Link Selected", f"Please select a {link_type} word to remove.")
-            return
-
-        word_B_name = selected_items[0].text()
-        entry_B = self.get_entry(word_B_name)
-
-        selected_word_id = entry_A['conlang']
+        word_B_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        entry_B = self.get_entry_by_id(word_B_id)
 
         if link_type == 'synonym':
-            if word_B_name in entry_A['synonyms']:
-                entry_A['synonyms'].remove(word_B_name)
-            if entry_B and selected_word_id in entry_B['synonyms']:
-                entry_B['synonyms'].remove(selected_word_id)
-        elif link_type == 'antonyms':
-            if word_B_name in entry_A['antonyms']:
-                entry_A['antonyms'].remove(word_B_name)
-            if entry_B and selected_word_id in entry_B['antonyms']:
-                entry_B['antonyms'].remove(selected_word_id)
+            if word_B_id in entry_A['synonyms']: entry_A['synonyms'].remove(word_B_id)
+            if entry_B and selected_word_id in entry_B['synonyms']: entry_B['synonyms'].remove(selected_word_id)
+        elif link_type == 'antonym':  # Fixed typo here from original code ('antonyms')
+            if word_B_id in entry_A['antonyms']: entry_A['antonyms'].remove(word_B_id)
+            if entry_B and selected_word_id in entry_B['antonyms']: entry_B['antonyms'].remove(selected_word_id)
 
         self.save_dictionary()
         self.update_lex_rel_display(entry_A)
 
-    def select_word_in_table(self, conlang_word):
-        """Finds and selects a word in the main QTableWidget."""
-        items = self.tree.findItems(conlang_word, Qt.MatchFlag.MatchExactly)
-        if items:
-            for item in items:
-                if item.column() == 0:
-                    self.tree.setCurrentItem(item)
-                    self.tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
-                    return
+    def select_word_in_table(self, word_id):
+        for row in range(self.tree.rowCount()):
+            item = self.tree.item(row, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole) == word_id:
+                self.tree.setCurrentItem(item)
+                self.tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
+                return
 
     def jump_to_word_from_listbox(self, item: QListWidgetItem):
-        word_to_find = item.text()
-
-        items = self.tree.findItems(word_to_find, Qt.MatchFlag.MatchExactly)
-        if items:
-            for found_item in items:
-                if found_item.column() == 0:
-                    self.tree.setCurrentItem(found_item)
-                    self.tree.scrollToItem(found_item, QAbstractItemView.ScrollHint.EnsureVisible)
-                    self.main_notebook.setCurrentWidget(self.tab_dictionary)
-                    return
-
-        QMessageBox.warning(self, "Link Error", f"The word '{word_to_find}' seems to be missing or filtered.")
+        word_id = item.data(Qt.ItemDataRole.UserRole)
+        self.select_word_in_table(word_id)
+        self.main_notebook.setCurrentWidget(self.tab_dictionary)
 
     # --- Grammar Page ---
 

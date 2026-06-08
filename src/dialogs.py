@@ -3,7 +3,7 @@ import os
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
-    QMessageBox, QDialog, QDialogButtonBox
+    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem
 )
 from PySide6.QtCore import Qt
 
@@ -612,3 +612,35 @@ Program Location: {parent.path}
 Sound Location: {'\\'.join(path)}\\assets\\ipa_sounds""")
 
         self.setLayout(layout)
+
+
+class WordSelectionDialog(QDialog):
+    def __init__(self, words, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Word")
+        self.setModal(True)
+        self.selected_uuid = None
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Multiple words found."))
+
+        self.listbox = QListWidget()
+        for word in words:
+            display_text = f"{word['conlang']} ({word['pos']}) - {', '.join(word.get('english', []))}"
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, word['id'])
+            self.listbox.addItem(item)
+        layout.addWidget(self.listbox)
+
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_box.accepted.connect(self.accept_selection)
+        btn_box.rejected.connect(self.reject)
+        layout.addWidget(btn_box)
+
+    def accept_selection(self):
+        selected = self.listbox.selectedItems()
+        if selected:
+            self.selected_uuid = selected[0].data(Qt.ItemDataRole.UserRole)
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a word.")

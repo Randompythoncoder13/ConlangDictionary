@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import uuid
 
 
 class DatabaseManager:
@@ -9,36 +10,25 @@ class DatabaseManager:
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
+        self._migrate_to_uuid()
 
     def _create_tables(self):
         cursor = self.conn.cursor()
         cursor.execute('''
                        CREATE TABLE IF NOT EXISTS dictionary
                        (
-                           conlang
-                           TEXT
-                           PRIMARY
-                           KEY,
-                           english
-                           TEXT,
-                           pos
-                           TEXT,
-                           description
-                           TEXT,
-                           tags
-                           TEXT,
-                           roots
-                           TEXT,
-                           derived
-                           TEXT,
-                           ipa
-                           TEXT,
-                           syllable
-                           TEXT,
-                           synonyms
-                           TEXT,
-                           antonyms
-                           TEXT
+                           id TEXT PRIMARY KEY,
+                           conlang TEXT,
+                           english TEXT,
+                           pos TEXT,
+                           description TEXT,
+                           tags TEXT,
+                           roots TEXT,
+                           derived TEXT,
+                           ipa TEXT,
+                           syllable TEXT,
+                           synonyms TEXT,
+                           antonyms TEXT
                        )
                        ''')
 
@@ -47,6 +37,42 @@ class DatabaseManager:
         cursor.execute('CREATE TABLE IF NOT EXISTS grammar (id INTEGER PRIMARY KEY, rules TEXT, tables TEXT)')
         cursor.execute('CREATE TABLE IF NOT EXISTS presets (name TEXT PRIMARY KEY, main_pattern TEXT, patterns TEXT)')
         self.conn.commit()
+
+    def _migrate_to_uuid(self):
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(dictionary)")
+        columns = [row['name'] for row in cursor.fetchall()]
+
+        if 'id' not in columns:
+            print("Migrating dictionary to UUID schema...")
+            cursor.execute("ALTER TABLE dictionary RENAME TO old_dictionary")
+            self._create_tables()
+
+            cursor.execute("SELECT * FROM old_dictionary")
+            old_rows = cursor.fetchall()
+
+            word_map = {}
+            migrated_data = []
+
+            # Assign UUIDs and build a lookup map
+            for row in old_rows:
+                entry = dict(row)
+                new_id = str(uuid.uuid4())
+                word_map[entry['conlang']] = new_id
+                entry['id'] = new_id
+
+                for field in ['english', 'tags', 'roots', 'derived', 'synonyms', 'antonyms']:
+                    entry[field] = json.loads(entry[field]) if entry[field] else []
+                migrated_data.append(entry)
+
+            # Update string relations to UUID relations
+            for entry in migrated_data:
+                for field in ['roots', 'derived', 'synonyms', 'antonyms']:
+                    entry[field] = [word_map.get(w, w) for w in entry[field] if w in word_map]
+
+            self.save_dictionary(migrated_data)
+            cursor.execute("DROP TABLE old_dictionary")
+            self.conn.commit()
 
     def migrate_from_json(self, json_dir):
         """Migrates old JSON files to SQLite and backs them up."""
@@ -60,14 +86,25 @@ class DatabaseManager:
         if os.path.exists(dict_file):
             with open(dict_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+
+                word_map = {}
                 for entry in data:
+                    new_id = str(uuid.uuid4())
+                    entry['id'] = new_id
+                    word_map[entry.get('conlang', '')] = new_id
+
+                for entry in data:
+                    # Update relations mapping strings to UUIDs
+                    for field in ['roots', 'derived', 'synonyms', 'antonyms']:
+                        entry[field] = [word_map.get(w, w) for w in entry.get(field, []) if w in word_map]
+
                     cursor.execute('''
-                                   INSERT
-                                   OR IGNORE INTO dictionary 
-                        (conlang, english, pos, description, tags, roots, derived, ipa, syllable, synonyms, antonyms)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   INSERT INTO dictionary
+                                   (id, conlang, english, pos, description, tags, roots, derived, ipa, syllable,
+                                    synonyms, antonyms)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    ''', (
-                                       entry.get('conlang', ''), json.dumps(entry.get('english', [])),
+                                       entry['id'], entry.get('conlang', ''), json.dumps(entry.get('english', [])),
                                        entry.get('pos', 'Other'), entry.get('description', ''),
                                        json.dumps(entry.get('tags', [])), json.dumps(entry.get('roots', [])),
                                        json.dumps(entry.get('derived', [])), entry.get('ipa', ''),
@@ -125,10 +162,10 @@ class DatabaseManager:
         for entry in dict_data:
             cursor.execute('''
                            INSERT INTO dictionary
-                           (conlang, english, pos, description, tags, roots, derived, ipa, syllable, synonyms, antonyms)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           (id, conlang, english, pos, description, tags, roots, derived, ipa, syllable, synonyms, antonyms)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            ''', (
-                               entry['conlang'], json.dumps(entry['english']), entry['pos'], entry['description'],
+                               entry.get('id', str(uuid.uuid4())), entry['conlang'], json.dumps(entry['english']), entry['pos'], entry['description'],
                                json.dumps(entry['tags']), json.dumps(entry['roots']), json.dumps(entry['derived']),
                                entry.get('ipa', ''), entry.get('syllable', ''), json.dumps(entry.get('synonyms', [])),
                                json.dumps(entry.get('antonyms', []))

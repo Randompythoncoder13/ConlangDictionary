@@ -1,3 +1,19 @@
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
+
+
+class HelpTab(QWidget):
+    def __init__(self, main_app):
+        super().__init__()
+        self.main_app = main_app
+
+        layout = QVBoxLayout(self)
+        help_text_widget = QTextEdit()
+        help_text_widget.setReadOnly(True)
+        layout.addWidget(help_text_widget)
+
+        help_text_widget.setText(help_text)
+
+
 help_text = """Welcome to the Conlang Dictionary Builder!
 
 This application helps you create, manage, and explore your constructed language. Here's a quick guide to its features.

@@ -3,7 +3,7 @@ import os
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
-    QMessageBox, QDialog, QDialogButtonBox
+    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem
 )
 from PySide6.QtCore import Qt
 
@@ -34,6 +34,7 @@ class EditWordDialog(QDialog):
         self.con_entry.setText(entry_to_edit['conlang'])
         if self.info_parent.custom_font_on:
             if self.info_parent.font:
+                # noinspection PyTypeChecker
                 self.con_entry.setFont(self.info_parent.font)
         layout.addWidget(self.con_entry, 0, 1)
 
@@ -52,6 +53,7 @@ class EditWordDialog(QDialog):
             self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
         if self.info_parent.custom_font_on:
             if self.info_parent.font:
+                # noinspection PyTypeChecker
                 self.syllable_entry.setFont(self.info_parent.font)
         layout.addWidget(self.syllable_entry, 2, 1)
 
@@ -117,8 +119,10 @@ class EditWordDialog(QDialog):
 
 
 class AddWordDialog(QDialog):
-    def __init__(self, word=None, word_classes=[], parent=None):
+    def __init__(self, word=None, word_classes=None, parent=None):
         super().__init__(parent)
+        if word_classes is None:
+            word_classes = []
         self.info_parent = parent
         self.word = word
         self.word_classes = word_classes
@@ -139,6 +143,7 @@ class AddWordDialog(QDialog):
             self.con_entry.setText(word)
         if self.info_parent.custom_font_on:
             if self.info_parent.font:
+                # noinspection PyTypeChecker
                 self.con_entry.setFont(self.info_parent.font)
         layout.addWidget(self.con_entry, 0, 1)
 
@@ -152,6 +157,7 @@ class AddWordDialog(QDialog):
         self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
         if self.info_parent.custom_font_on:
             if self.info_parent.font:
+                # noinspection PyTypeChecker
                 self.syllable_entry.setFont(self.info_parent.font)
         layout.addWidget(self.syllable_entry, 2, 1)
 
@@ -232,6 +238,7 @@ class ManageTagsDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self.listbox = QListWidget()
+        # noinspection PyTypeChecker
         self.listbox.addItems(sorted(self.all_tags))
         layout.addWidget(self.listbox)
 
@@ -301,6 +308,7 @@ class ManagePOSDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self.listbox = QListWidget()
+        # noinspection PyTypeChecker
         self.listbox.addItems(sorted(self.pos))
         layout.addWidget(self.listbox)
 
@@ -323,6 +331,7 @@ class ManagePOSDialog(QDialog):
 
         self.pos_changed = False
 
+    # noinspection PyUnresolvedReferences
     def add_tag(self):
         pos = self.entry.text().strip()
         if pos and pos not in self.pos:
@@ -371,6 +380,7 @@ class OpenProjectDialog(QDialog):
         bottom_frame = QGridLayout(bottom_box)
 
         self.project_select = QComboBox()
+        # noinspection PyTypeChecker
         self.project_select.addItems(self.fetch_projects())
         self.project_select.setCurrentIndex(-1)
         top_frame.addWidget(self.project_select, 0, 0)
@@ -410,18 +420,14 @@ class OpenProjectDialog(QDialog):
             return
 
         if self.flag:
-            self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_master_dir, self.project_select.currentText()
-            )
+            self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_select.currentText()
         else:
-            self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_dir, self.project_select.currentText()
-            )
+            self.info_parent.app_data_dir = self.info_parent.app_data_dir / self.project_select.currentText()
 
-        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
-        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
-        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
-        self.info_parent.generator_presents = os.path.join(self.info_parent.app_data_dir, "generator_presents.json")
+        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
+        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
+        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
+        self.info_parent.generator_presents = self.info_parent.app_data_dir / "generator_presents.json"
 
         self.info_parent.setWindowTitle(f"{self.project_select.currentText()} Dictionary")
 
@@ -436,19 +442,15 @@ class OpenProjectDialog(QDialog):
             return
 
         if self.flag:
-            self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_master_dir, self.project_create.text().strip()
-            )
+            self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_create.text().strip()
         else:
-            self.info_parent.app_data_dir = os.path.join(
-                self.info_parent.app_data_dir, self.project_create.text().strip()
-            )
+            self.info_parent.app_data_dir = self.info_parent.app_data_dir, self.project_create.text().strip()
 
-        os.makedirs(os.path.join(self.info_parent.app_data_dir, self.project_create.text().strip()), exist_ok=True)
-        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
-        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
-        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
-        self.info_parent.generator_presents = os.path.join(self.info_parent.app_data_dir, "generator_presents.json")
+        os.makedirs(self.info_parent.app_data_dir / self.project_create.text().strip(), exist_ok=True)
+        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
+        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
+        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
+        self.info_parent.generator_presents = self.info_parent.app_data_dir / "generator_presents.json"
 
         self.info_parent.setWindowTitle(f"{self.project_create.text().strip()} Dictionary")
 
@@ -499,14 +501,14 @@ class RenameProjectDialog(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Project with this name already exists.")
             return
 
-        new_location = os.path.join(self.info_parent.app_data_master_dir, self.project_name.text().strip())
+        new_location = self.info_parent.app_data_master_dir / self.project_name.text().strip()
 
         os.rename(self.info_parent.app_data_dir, new_location)
         self.info_parent.app_data_dir = new_location
 
-        self.info_parent.dictionary_file = os.path.join(self.info_parent.app_data_dir, "conlang_dictionary.json")
-        self.info_parent.tags_file = os.path.join(self.info_parent.app_data_dir, "conlang_tags.json")
-        self.info_parent.grammar_file = os.path.join(self.info_parent.app_data_dir, "conlang_grammar.json")
+        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
+        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
+        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
 
         self.info_parent.setWindowTitle(self.project_name.text().strip())
 
@@ -519,6 +521,7 @@ class WarningDialog(QDialog):
 
         self.setWindowTitle("WARNING!")
 
+        # noinspection PyTypeChecker
         QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
 
         self.buttonBox = QDialogButtonBox(QBtn)
@@ -540,6 +543,7 @@ class SecondaryCheckDialog(QDialog):
 
         layout = QVBoxLayout()
 
+        # noinspection PyTypeChecker
         QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
 
         layout.addWidget(QLabel("Type \"CONFIRM\" to proceed with the action."))
@@ -565,6 +569,7 @@ class ImportantWarningDialog(QDialog):
 
         self.setWindowTitle("WARNING!")
 
+        # noinspection PyTypeChecker
         QBtn = (QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
 
         self.buttonBox = QDialogButtonBox(QBtn)
@@ -612,3 +617,36 @@ Program Location: {parent.path}
 Sound Location: {'\\'.join(path)}\\assets\\ipa_sounds""")
 
         self.setLayout(layout)
+
+
+class WordSelectionDialog(QDialog):
+    def __init__(self, words, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Word")
+        self.setModal(True)
+        self.selected_uuid = None
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Multiple words found."))
+
+        self.listbox = QListWidget()
+        for word in words:
+            display_text = f"{word['conlang']} ({word['pos']}) - {', '.join(word.get('english', []))}"
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, word['id'])
+            self.listbox.addItem(item)
+        layout.addWidget(self.listbox)
+
+        # noinspection PyTypeChecker
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_box.accepted.connect(self.accept_selection)
+        btn_box.rejected.connect(self.reject)
+        layout.addWidget(btn_box)
+
+    def accept_selection(self):
+        selected = self.listbox.selectedItems()
+        if selected:
+            self.selected_uuid = selected[0].data(Qt.ItemDataRole.UserRole)
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a word.")

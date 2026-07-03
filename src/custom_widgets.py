@@ -173,6 +173,8 @@ class IPATable(QTableWidget):
                     is_header = (r_idx < 1) or (c_idx == 0)
                 elif self.variant == 1:
                     is_header = r_idx < 1
+                else:
+                    is_header = False
 
                 is_special_cell = cell_text == "/"
                 cell_text = "" if cell_text == "/" else cell_text

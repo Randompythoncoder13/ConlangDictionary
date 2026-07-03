@@ -10,7 +10,7 @@ def zip_folder(source_folder, output_filename):
     Zips a specified folder into a new zip archive.
 
     Args:
-        source_folder (str): The path to the folder to be zipped.
+        source_folder (Path): The path to the folder to be zipped.
         output_filename (str): The desired name for the output zip file (without .zip extension).
     """
     try:

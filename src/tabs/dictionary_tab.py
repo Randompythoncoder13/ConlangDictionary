@@ -15,6 +15,8 @@ class DictionaryTab(QWidget):
     def __init__(self, main_app):
         super().__init__()
         self.main_app = main_app
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
 
         main_layout = QHBoxLayout(self)
 
@@ -572,6 +574,9 @@ class DictionaryTab(QWidget):
 
         if flag:
             self.select_word_in_table(item)
+
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
 
     def get_entry_by_id(self, word_id):
         return next((item for item in self.main_app.dictionary if item.get("id") == word_id), None)

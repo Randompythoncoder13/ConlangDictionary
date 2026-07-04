@@ -65,6 +65,8 @@ class ConlangDictionaryApp(QMainWindow):
         self.db = DatabaseManager(self.db_path)
         self.db.migrate_from_json(self.app_data_dir)
 
+        self.custom_font_on = False
+
         # --- Load Data from SQL ---
         self.dictionary = self.load_dictionary()
         self.all_tags, self.word_classes = self.load_tags()
@@ -140,6 +142,7 @@ class ConlangDictionaryApp(QMainWindow):
         return self.db.get_presets()
 
     def load_font(self):
+        self.custom_font_on = False
         self.font_file = os.path.join(self.app_data_dir, "font.ttf")
         if not os.path.exists(self.font_file):
             self.font_file = os.path.join(self.app_data_dir, "font.otf")
@@ -153,6 +156,7 @@ class ConlangDictionaryApp(QMainWindow):
                 QMessageBox.warning(self, "Error", result)
                 return None
             else:
+                self.custom_font_on = True
                 return result
         else:
             return None

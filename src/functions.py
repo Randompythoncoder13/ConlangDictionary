@@ -79,7 +79,7 @@ def get_font(file_name):
 
         family_name = families[0]
 
-        return QFont(family_name, 12)
+        return QFont(family_name, 11)
 
     except Exception as e:
         return "Could not load custom font."

@@ -153,6 +153,7 @@ class ConlangDictionaryApp(QMainWindow):
                 QMessageBox.warning(self, "Error", result)
                 return None
             else:
+                self.custom_font_on = True
                 return result
         else:
             return None

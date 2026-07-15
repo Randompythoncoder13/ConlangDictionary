@@ -516,7 +516,7 @@ class RenameProjectDialog(QDialog):
 
         self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
 
-        self.info_parent.setWindowTitle(self.project_name.text().strip())
+        self.info_parent.setWindowTitle(f"{self.project_name.text().strip()} Dictionary")
         self.info_parent.db.__init__(self.info_parent.db_path)
 
         self.accept()

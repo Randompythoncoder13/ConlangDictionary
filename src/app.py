@@ -321,33 +321,37 @@ class ConlangDictionaryApp(QMainWindow):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
 
         if file_name:
-            try:
-                with open(f"{file_name}", "w") as f:
-                    headers = ['conlang', 'english', 'pos', 'description', 'tags', 'roots', 'derived']
+            with open(f"{file_name}", "w", newline='') as f:
+                headers = [
+                    'conlang', 'english', 'syllabication', 'ipa', 'pos', 'description', 'tags', 'roots', 'derived',
+                    'synonyms', 'antonyms'
+                ]
 
-                    writer = csv.DictWriter(f, fieldnames=headers)
+                writer = csv.DictWriter(f, fieldnames=headers)
 
-                    writer.writeheader()
+                writer.writeheader()
 
-                    for entry in self.dictionary:
-                        row_data = {
-                            'conlang': entry.get('conlang', ''),
-                            'english': '|'.join(entry.get('english', [])),
-                            'syllabication': '|'.join(entry.get('syllable', '')),
-                            'ipa': '|'.join(entry.get('ipa', '')),
-                            'pos': entry.get('pos', ''),
-                            'description': entry.get('description', ''),
-                            'tags': '|'.join(entry.get('tags', [])),
-                            'roots': '|'.join(entry.get('roots', [])),
-                            'derived': '|'.join(entry.get('derived', [])),
-                            'synonyms': '|'.join(entry.get('synonyms', [])),
-                            'antonyms': '|'.join(entry.get('antonyms', []))
-                        }
+                for entry in self.dictionary:
+                    print(entry)
+                    row_data = {
+                        'conlang': entry.get('conlang', ''),
+                        'english': '|'.join(entry.get('english', [])),
+                        'syllabication': '|'.join(entry.get('syllable', '')),
+                        'ipa': '|'.join(entry.get('ipa', '')),
+                        'pos': entry.get('pos', ''),
+                        'description': entry.get('description', ''),
+                        'tags': '|'.join(entry.get('tags', [])),
+                        'roots': '|'.join(self.tab_dictionary.get_entry_by_id(root_id)['conlang'] for root_id in
+                                          entry.get('roots', [])),
+                        'derived': '|'.join(self.tab_dictionary.get_entry_by_id(root_id)['conlang'] for root_id in
+                                            entry.get('derived', [])),
+                        'synonyms': '|'.join(self.tab_dictionary.get_entry_by_id(root_id)['conlang'] for root_id in
+                                             entry.get('synonyms', [])),
+                        'antonyms': '|'.join(self.tab_dictionary.get_entry_by_id(root_id)['conlang'] for root_id in
+                                             entry.get('antonyms', [])),
+                    }
 
-                        writer.writerow(row_data)
-            except Exception as e:
-                error_dialog = QErrorMessage()
-                error_dialog.showMessage(f"Error saving file: {e}")
+                    writer.writerow(row_data)
 
     def export_to_zip(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Export Project", "", "ZIP Files (*.zip)")

@@ -1,5 +1,6 @@
 import sys
 import os
+import gc
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
@@ -421,6 +422,8 @@ class OpenProjectDialog(QDialog):
 
         if self.flag:
             self.info_parent.db.close()
+            gc.collect()
+
             self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_select.currentText()
 
             self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
@@ -449,6 +452,7 @@ class OpenProjectDialog(QDialog):
 
         if self.flag:
             self.info_parent.db.close()
+            gc.collect()
             self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
             self.info_parent.db.__init__(self.info_parent.db_path)
 
@@ -504,6 +508,8 @@ class RenameProjectDialog(QDialog):
         new_location = self.info_parent.app_data_master_dir / self.project_name.text().strip()
 
         self.info_parent.db.close()
+
+        gc.collect()
 
         os.rename(self.info_parent.app_data_dir, new_location)
         self.info_parent.app_data_dir = new_location

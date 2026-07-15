@@ -420,14 +420,13 @@ class OpenProjectDialog(QDialog):
             return
 
         if self.flag:
+            self.info_parent.db.close()
             self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_select.currentText()
+
+            self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
+            self.info_parent.db.__init__(self.info_parent.db_path)
         else:
             self.info_parent.app_data_dir = self.info_parent.app_data_dir / self.project_select.currentText()
-
-        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
-        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
-        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
-        self.info_parent.generator_presents = self.info_parent.app_data_dir / "generator_presents.json"
 
         self.info_parent.setWindowTitle(f"{self.project_select.currentText()} Dictionary")
 
@@ -444,13 +443,14 @@ class OpenProjectDialog(QDialog):
         if self.flag:
             self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_create.text().strip()
         else:
-            self.info_parent.app_data_dir = self.info_parent.app_data_dir, self.project_create.text().strip()
+            self.info_parent.app_data_dir = self.info_parent.app_data_dir / self.project_create.text().strip()
 
         os.makedirs(self.info_parent.app_data_dir / self.project_create.text().strip(), exist_ok=True)
-        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
-        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
-        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
-        self.info_parent.generator_presents = self.info_parent.app_data_dir / "generator_presents.json"
+
+        if self.flag:
+            self.info_parent.db.close()
+            self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
+            self.info_parent.db.__init__(self.info_parent.db_path)
 
         self.info_parent.setWindowTitle(f"{self.project_create.text().strip()} Dictionary")
 
@@ -503,14 +503,15 @@ class RenameProjectDialog(QDialog):
 
         new_location = self.info_parent.app_data_master_dir / self.project_name.text().strip()
 
+        self.info_parent.db.close()
+
         os.rename(self.info_parent.app_data_dir, new_location)
         self.info_parent.app_data_dir = new_location
 
-        self.info_parent.dictionary_file = self.info_parent.app_data_dir / "conlang_dictionary.json"
-        self.info_parent.tags_file = self.info_parent.app_data_dir / "conlang_tags.json"
-        self.info_parent.grammar_file = self.info_parent.app_data_dir / "conlang_grammar.json"
+        self.info_parent.db_path = self.info_parent.app_data_dir / "project.db"
 
         self.info_parent.setWindowTitle(self.project_name.text().strip())
+        self.info_parent.db.__init__(self.info_parent.db_path)
 
         self.accept()
 

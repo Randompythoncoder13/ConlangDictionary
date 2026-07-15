@@ -18,6 +18,7 @@ from src.tabs.stats_tab import StatsTab
 from src.tabs.word_gen_tab import WordGenTab
 from src.tabs.ipa_tab import IPATab
 from src.tabs.help_tab import HelpTab
+from src.tabs.alphabet_tab import AlphabetTab
 
 
 class ConlangDictionaryApp(QMainWindow):
@@ -26,6 +27,7 @@ class ConlangDictionaryApp(QMainWindow):
     constructed language, written in PySide6.
     """
 
+    #region init
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Conlang Dictionary")
@@ -64,6 +66,8 @@ class ConlangDictionaryApp(QMainWindow):
         self.db_path = self.app_data_dir / "project.db"
         self.db = DatabaseManager(self.db_path)
         self.db.migrate_from_json(self.app_data_dir)
+
+        self.custom_font_on = False
 
         # --- Load Data from SQL ---
         self.dictionary = self.load_dictionary()
@@ -111,8 +115,9 @@ class ConlangDictionaryApp(QMainWindow):
                     self.set_dark_mode()
         except FileNotFoundError:
             self.set_light_mode()
+    #endregion
 
-    # --- Data Load/Save Methods ---
+    #region Data Load/Save Methods
 
     def save_dictionary(self):
         self.db.save_dictionary(self.dictionary)
@@ -157,8 +162,9 @@ class ConlangDictionaryApp(QMainWindow):
                 return result
         else:
             return None
+    #endregion
 
-    # --- UI Creation Methods ---
+    #region UI Creation Methods
 
     def create_widgets(self):
         self.main_notebook = QTabWidget()
@@ -172,10 +178,12 @@ class ConlangDictionaryApp(QMainWindow):
         self.tab_ipa = IPATab(self)
         self.tab_stats = StatsTab(self)
         self.tab_help = HelpTab(self)
+        self.tab_alphabet = AlphabetTab(self)
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
         self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
         self.main_notebook.addTab(self.tab_grammar, 'Grammar Appendix')
+        self.main_notebook.addTab(self.tab_alphabet, 'Custom Alphabet')
         self.main_notebook.addTab(self.tab_ipa, 'IPA Chart')
         self.main_notebook.addTab(self.tab_stats, 'Statistics')
         self.main_notebook.addTab(self.tab_help, 'How To Use / Help')
@@ -239,8 +247,9 @@ class ConlangDictionaryApp(QMainWindow):
         ko_fi = QAction("Support Project on Ko-Fi", self)
         ko_fi.triggered.connect(self.donate_kofi)
         supportMenu.addAction(ko_fi)
+    #endregion
 
-    # --- Menu Bar ---
+    #region Menu Bar
 
     def open_make_new_project(self):
         dialog = OpenProjectDialog(self, flag=True)
@@ -470,8 +479,9 @@ class ConlangDictionaryApp(QMainWindow):
         msg.setText("Make a donation at at the website below or click <a href='https://ko-fi.com/mastercheese129'>here</a>.\nhttps://ko-fi.com/mastercheese129")
 
         msg.exec_()
+    #endregion
 
-    # --- Random/Utility ---
+    #region Random/Utility
 
     def update_tags(self, tags_list):
         new_tag_found = False
@@ -492,6 +502,16 @@ class ConlangDictionaryApp(QMainWindow):
     def debug(self):
         dialog = DebugDialog(self)
         dialog.show()
+    #endregion
+
+    #region Cross-Tab Signals
+    def toggle_font(self, origin):
+        if origin == "dict":
+            self.tab_alphabet.toggle_font(True)
+        elif origin == "alpha":
+            self.tab_dictionary.toggle_font(True)
+
+    #endregion
 
 
 if __name__ == "__main__":

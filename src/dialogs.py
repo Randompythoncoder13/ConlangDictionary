@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+from custom_widgets import IPALineEdit
+
 
 class EditWordDialog(QDialog):
     """
@@ -58,11 +60,9 @@ class EditWordDialog(QDialog):
         layout.addWidget(self.syllable_entry, 2, 1)
 
         layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
-        self.ipa_entry = QLineEdit()
+        self.ipa_entry = IPALineEdit()
         if entry_to_edit['ipa']:
             self.ipa_entry.setText(entry_to_edit['ipa'])
-        else:
-            self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
         layout.addWidget(self.ipa_entry, 3, 1)
 
         layout.addWidget(QLabel("Part of Speech:"), 4, 0)
@@ -162,8 +162,7 @@ class AddWordDialog(QDialog):
         layout.addWidget(self.syllable_entry, 2, 1)
 
         layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
-        self.ipa_entry = QLineEdit()
-        self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
+        self.ipa_entry = IPALineEdit()
         layout.addWidget(self.ipa_entry, 3, 1)
 
         layout.addWidget(QLabel("Part of Speech:"), 4, 0)
@@ -208,10 +207,8 @@ class AddWordDialog(QDialog):
             "syllable": self.syllable_entry.text().strip()
         }
 
-        print(self.ipa_entry.text().strip())
-
-        if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
-            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+        if not self.new_entry_data["conlang"]:
+            QMessageBox.warning(self, "Input Error", "Conlang field is required.")
             self.new_entry_data = None  # Invalidate data
             return
 

@@ -17,6 +17,8 @@ class DictionaryTab(QWidget):
         self.main_app = main_app
 
         main_layout = QHBoxLayout(self)
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
 
         # --- Left Panel ---
         left_panel = QWidget()
@@ -319,8 +321,8 @@ class DictionaryTab(QWidget):
         ipa = new_data["ipa"]
         syllable = new_data["syllable"]
 
-        if not conlang_word or not english_words:
-            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
+        if not conlang_word:
+            QMessageBox.warning(self, "Input Error", "Conlang field is required.")
             return
 
         if not pos:
@@ -559,7 +561,7 @@ class DictionaryTab(QWidget):
             self.main_app.save_tags()
             self.update_filter_pos_listbox()
 
-    def toggle_font(self):
+    def toggle_font(self, no_recur=False):
         if self.tree.currentRow() != -1:
             flag = True
             row = self.tree.currentRow()
@@ -572,6 +574,9 @@ class DictionaryTab(QWidget):
 
         if flag:
             self.select_word_in_table(item)
+
+        if not no_recur:
+            self.main_app.toggle_font("dict")
 
     def get_entry_by_id(self, word_id):
         return next((item for item in self.main_app.dictionary if item.get("id") == word_id), None)

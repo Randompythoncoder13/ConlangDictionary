@@ -3,9 +3,9 @@ import sys
 
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QLabel, QHBoxLayout, QStyle, QToolButton, QListWidget, QSizePolicy,
-    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea
+    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea, QComboBox
 )
-from PySide6.QtGui import QFont, QColor, QPalette, QMouseEvent, QFontMetrics
+from PySide6.QtGui import QFont, QColor, QPalette, QMouseEvent, QFontMetrics, QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt, QSize, Signal, QPoint, QEvent, QRect
 
 import pyperclip
@@ -115,9 +115,9 @@ class IPACellWidget(QWidget):
 
     def play_sound(self):
         if sys.platform == "win32":
-            path = self.parent.path.split('\\')
+            path = self.parent.main_app.path.split('\\')
         else:
-            path = self.parent.path.split('/')
+            path = self.parent.main_app.path.split('/')
         path.remove('src')
 
         try:
@@ -316,7 +316,7 @@ class IPALineEdit(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.text_input = QLineEdit()
-        self.text_input.setPlaceholderText("Enter word or sound change rule...")
+        self.text_input.setPlaceholderText("Enter IPA Sounds")
 
         self.ipa_btn = QPushButton("IPA")
         self.ipa_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -381,7 +381,7 @@ class LetterBlock(QWidget):
 
     def __init__(self, letter, ipa, custom_font_family=None):
         super().__init__()
-        self.letter = letter
+        self.letter = letter.lower()
         self.ipa = ipa
 
         self.custom_font = custom_font_family
@@ -468,3 +468,100 @@ class LetterBlock(QWidget):
             self.lbl_small.setText(f"{self.letter.upper()} /{self.ipa}/")
         else:
             self.lbl_small.setText(f"/{self.ipa}/")
+
+
+class ConlangTableWidgetItem(QTableWidgetItem):
+    def __init__(self, text, main_app):
+        super().__init__(text)
+        self.main_app = main_app
+
+    def __lt__(self, other):
+        # Safely fetch the custom alphabet (assuming it's stored as a list of characters in main_app)
+        # e.g., self.main_app.custom_alphabet = ['z', 'y', 'x', 'a', 'b', ...]
+        alphabet = getattr(self.main_app, 'custom_alphabet', None)
+
+        # Fallback to standard sorting if no custom alphabet is currently defined
+        if not alphabet:
+            return super().__lt__(other)
+
+        # Create a fast O(1) lookup map for the characters
+        order_map = {char: i for i, char in enumerate(alphabet)}
+
+        def get_sort_key(word):
+            # Translate word into a list of integers.
+            # If a character isn't in the alphabet (like a space or hyphen), push it to the end using float('inf')
+            return [order_map.get(char, float('inf')) for char in word.lower()]
+
+        # Compare the numerical keys instead of the strings
+        return get_sort_key(self.text()) < get_sort_key(other.text())
+
+
+class MultiSelectComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+        self.lineEdit().setPlaceholderText("Select POS...")
+
+        self.custom_model = QStandardItemModel()
+        self.setModel(self.custom_model)
+
+        self.view().viewport().installEventFilter(self)
+
+        self.lineEdit().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj == self.lineEdit() and event.type() == QEvent.Type.MouseButtonRelease:
+            self.showPopup()
+            return True
+
+        if obj == self.view().viewport() and event.type() == QEvent.Type.MouseButtonRelease:
+            index = self.view().indexAt(event.pos())
+            item = self.custom_model.itemFromIndex(index)
+            if item:
+                if item.checkState() == Qt.CheckState.Checked:
+                    item.setCheckState(Qt.CheckState.Unchecked)
+                else:
+                    item.setCheckState(Qt.CheckState.Checked)
+                self._update_display_text()
+            return True
+
+        return super().eventFilter(obj, event)
+
+    def addItems(self, texts):
+        for text in texts:
+            item = QStandardItem(text)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.custom_model.appendRow(item)
+
+        self.setCurrentIndex(-1)
+        self._update_display_text()
+
+    def _update_display_text(self):
+        selected = self.get_selected()
+        if selected:
+            self.lineEdit().setText(", ".join(selected))
+        else:
+            self.lineEdit().setText("")
+
+    def get_selected(self):
+        selected = []
+        for i in range(self.custom_model.rowCount()):
+            item = self.custom_model.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
+        return selected
+
+    def set_selected(self, selected_items):
+        if isinstance(selected_items, str):
+            selected_items = [selected_items]
+
+        for i in range(self.custom_model.rowCount()):
+            item = self.custom_model.item(i)
+            if item.text() in selected_items:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+
+        self._update_display_text()

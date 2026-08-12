@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 
-from src.dialogs import ManagePOSDialog, ManageTagsDialog, EditWordDialog, AddWordDialog, WordSelectionDialog
-from src.custom_widgets import DeselectableListWidget
+from src.dialogs import ManagePOSDialog, ManageTagsDialog, WordDialog, WordSelectionDialog
+from src.custom_widgets import DeselectableListWidget, ConlangTableWidgetItem
 
 
 class DictionaryTab(QWidget):
@@ -233,7 +233,17 @@ class DictionaryTab(QWidget):
 
         self.tree.setRowCount(0)
 
-        entries.sort(key=lambda x: x['conlang'].lower())
+        # Check if the custom alphabet exists and sort the raw list accordingly
+        alphabet = getattr(self.main_app, 'custom_alphabet', None)
+        if alphabet:
+            order_map = {char: i for i, char in enumerate(alphabet)}
+
+            def list_sort_key(entry):
+                return [order_map.get(char, float('inf')) for char in entry['conlang'].lower()]
+
+            entries.sort(key=list_sort_key)
+        else:
+            entries.sort(key=lambda x: x['conlang'].lower())
 
         for entry in entries:
             row_position = self.tree.rowCount()
@@ -241,15 +251,16 @@ class DictionaryTab(QWidget):
 
             tags_str = ", ".join(entry.get('tags', []))
             english_str = ", ".join(entry.get('english', []))
+            pos_str = ", ".join(entry.get('pos', []))
 
-            conlang_item = QTableWidgetItem(entry["conlang"])
+            conlang_item = ConlangTableWidgetItem(entry["conlang"], self.main_app)
             if self.main_app.custom_font_on:
                 if self.main_app.font:
                     conlang_item.setFont(self.main_app.font)
             else:
                 conlang_item.setFont(self.default_font)
             english_item = QTableWidgetItem(english_str)
-            pos_item = QTableWidgetItem(entry["pos"])
+            pos_item = QTableWidgetItem(pos_str)
             tags_item = QTableWidgetItem(tags_str)
 
             conlang_item.setData(Qt.ItemDataRole.UserRole, entry["id"])
@@ -280,7 +291,10 @@ class DictionaryTab(QWidget):
         selected_pos_item = self.filter_pos_listbox.selectedItems()
         if selected_pos_item:
             selected_pos = {item.text() for item in selected_pos_item}
-            filtered_list = [entry for entry in filtered_list if entry['pos'] in selected_pos]
+            filtered_list = [
+                entry for entry in filtered_list
+                if any(pos in selected_pos for pos in entry['pos'])
+            ]
 
         # Filter by selected tags
         selected_tag_items = self.tag_filter_listbox.selectedItems()
@@ -303,7 +317,7 @@ class DictionaryTab(QWidget):
         self.populate_dictionary_list(filtered_list)
 
     def add_word(self, word=None, flag=None):
-        self.add_word_dialog = AddWordDialog(word=word, word_classes=self.main_app.word_classes, parent=self)
+        self.add_word_dialog = WordDialog(self.main_app.word_classes, parent=self, default_word=word)
         self.add_word_dialog.accepted.connect(lambda: self._process_new_word(flag))
         self.add_word_dialog.show()
 
@@ -413,7 +427,7 @@ class DictionaryTab(QWidget):
         if not self.entry_to_edit:
             return
 
-        self.delete_word_dialog = EditWordDialog(self.entry_to_edit, self.main_app.word_classes, self)
+        self.delete_word_dialog = WordDialog(self.main_app.word_classes, self, self.entry_to_edit)
         self.delete_word_dialog.accepted.connect(lambda: self._process_edit_word())
         self.delete_word_dialog.show()
 
@@ -428,7 +442,7 @@ class DictionaryTab(QWidget):
         self.main_app.save_dictionary()
         self.update_word_display()
         self.select_word_in_table(self.entry_to_edit["id"])
-        self.main_app.refresh_stats_page()
+        self.main_app.tab_stats.refresh_stats_page()
 
     def on_item_double_click(self, item):
         self.edit_word()
@@ -450,6 +464,14 @@ class DictionaryTab(QWidget):
                         english_words += ", "
                     counter += 1
 
+                parts_of_speech = ""
+                counter = 0
+                for word in entry['pos']:
+                    parts_of_speech += word
+                    if counter != len(entry['pos']) - 1:
+                        parts_of_speech += ", "
+                    counter += 1
+
                 if self.main_app.custom_font_on:
                     if self.font:
                         description = (
@@ -465,7 +487,7 @@ class DictionaryTab(QWidget):
                         if entry['ipa']:
                             description += f"/{entry['ipa']}/<br>"
 
-                        description += f"{entry['pos']}<br>"
+                        description += f"{parts_of_speech}<br>"
                         description += f"{entry['description']}"
                         description += f"</p>"
                     else:
@@ -482,7 +504,7 @@ class DictionaryTab(QWidget):
                         if entry['ipa']:
                             description += f"/{entry['ipa']}/<br>"
 
-                        description += f"{entry['pos']}<br>"
+                        description += f"{parts_of_speech}<br>"
                         description += f"{entry['description']}"
                         description += f"</p>"
                 else:
@@ -499,7 +521,7 @@ class DictionaryTab(QWidget):
                     if entry['ipa']:
                         description += f"/{entry['ipa']}/<br>"
 
-                    description += f"{entry['pos']}<br>"
+                    description += f"{parts_of_speech}<br>"
                     description += f"{entry['description']}"
                     description += f"</p>"
 
@@ -562,21 +584,34 @@ class DictionaryTab(QWidget):
             self.update_filter_pos_listbox()
 
     def toggle_font(self, no_recur=False):
-        if self.tree.currentRow() != -1:
-            flag = True
-            row = self.tree.currentRow()
-            item = self.tree.item(row, 0).data(Qt.ItemDataRole.UserRole)
-        else:
-            flag = False
+        saved_row = self.tree.currentRow()
+        has_selection = saved_row != -1
 
         self.main_app.custom_font_on = not self.main_app.custom_font_on
-        self.update_word_display()
+        self.custom_font_on = self.main_app.custom_font_on
 
-        if flag:
-            self.select_word_in_table(item)
+        self.tree.blockSignals(True)
+        self.update_word_display()
+        self.tree.blockSignals(False)
+
+        if has_selection:
+            QTimer.singleShot(0, lambda: self._force_reselect(saved_row))
 
         if not no_recur:
             self.main_app.toggle_font("dict")
+
+    def _force_reselect(self, row):
+        """Helper function to absolutely guarantee the row highlights visually."""
+        # 1. Select the entire row
+        self.tree.selectRow(row)
+
+        # 2. Set the internal active cursor to that cell (often required for visual highlight)
+        self.tree.setCurrentCell(row, 0)
+
+        # 3. (Optional but helpful) Scroll back to it in case the update reset the scrollbar
+        item = self.tree.item(row, 0)
+        if item:
+            self.tree.scrollToItem(item)
 
     def get_entry_by_id(self, word_id):
         return next((item for item in self.main_app.dictionary if item.get("id") == word_id), None)

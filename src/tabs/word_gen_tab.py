@@ -28,9 +28,9 @@ class WordGenTab(QWidget):
         scroll_area.setWidget(scroll_widget)
         main_layout.addWidget(scroll_area)
 
-        self.content_layout.addWidget(
-            QLabel("Based on Kozuka. Go here for how to use: https://kozuka.kmwc.org/help.html")
-        )
+        label = QLabel("Based on Kozuka. Go here for how to use: https://kozuka.kmwc.org/help.html")
+        label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.content_layout.addWidget(label)
 
         patterns_group = QWidget()
         patterns_layout = QVBoxLayout(patterns_group)
@@ -273,3 +273,14 @@ class WordGenTab(QWidget):
         """Displays an error message in the error label."""
         self.error_label.setText(message)
         self.error_label.show()
+
+    def reset(self):
+        self.pattern_load_box.clear()
+        self.pattern_load_box.addItems([name["name"] for name in self.main_app.presents])
+        self.pattern_load_box.setCurrentIndex(0)
+
+        self.clear_pattern_rows()
+        self.main_pattern_input.setText("")
+        self.num_words_input.setText("100")
+        self.pattern_save_name.setText("")
+        self.gen_output_listbox.clear()

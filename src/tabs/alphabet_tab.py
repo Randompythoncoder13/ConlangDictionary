@@ -1,6 +1,9 @@
+import json
+
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QLayout, QStyle, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QLayout, QStyle, QMessageBox,
+    QProgressDialog
 )
 from PySide6.QtGui import QFont
 
@@ -17,8 +20,13 @@ class AlphabetTab(QWidget):
         self.custom_font_on = self.main_app.custom_font_on
 
         self.blocks = []
+        self.sort_data = []
+
+        self.translators = [{}, {}, []]
 
         self.init_ui()
+
+        self.load_data()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -37,10 +45,14 @@ class AlphabetTab(QWidget):
         btn_font = QPushButton("Toggle Custom Font")
         btn_font.clicked.connect(self.toggle_font)
 
+        btn_generate_ipa = QPushButton("Populate Empty IPA Fields")
+        btn_generate_ipa.clicked.connect(self.populate_ipa)
+
         control_layout.addWidget(self.input_letter)
         control_layout.addWidget(self.input_ipa)
         control_layout.addWidget(btn_add)
         control_layout.addWidget(btn_font)
+        control_layout.addWidget(btn_generate_ipa)
         control_layout.addStretch()
 
         main_layout.addLayout(control_layout)
@@ -55,15 +67,24 @@ class AlphabetTab(QWidget):
 
         main_layout.addWidget(self.scroll_area)
 
-    def add_block(self):
-        letter = self.input_letter.text().strip()
-        ipa = self.input_ipa.text().strip()
+    def add_block(self, flag=False, data=None):
+        if not flag:
+            letter = self.input_letter.text().strip().lower()
+            ipa = self.input_ipa.text().strip()
+        else:
+            letter = data["letter"]
+            ipa = data["ipa"]
 
         if not letter:
             return
 
         if len(letter) > 1:
             QMessageBox.warning(self, "Error", "Please enter only letter")
+            return
+
+        if any(block.letter == letter for block in self.blocks):
+            if not flag:
+                QMessageBox.warning(self, "Error", f"You can't have two blocks with the same letter.")
             return
 
         if self.font_exist:
@@ -113,6 +134,8 @@ class AlphabetTab(QWidget):
         for block in self.blocks:
             self.flow_layout.addWidget(block)
 
+        self.update_data()
+
     def toggle_font(self, no_recur=False):
         if not no_recur:
             self.main_app.toggle_font("alpha")
@@ -125,6 +148,89 @@ class AlphabetTab(QWidget):
 
         self.refresh_layout()
 
+    def update_data(self):
+        data = []
+        self.translators = [{}, {}, []]
+
+        for block in self.blocks:
+            data.append({"letter": block.letter, "ipa": block.ipa})
+
+            self.translators[0][block.letter] = block.ipa
+            self.translators[1][block.ipa] = block.letter
+            self.translators[2].append(block.letter)
+
+        if self.translators[2]:
+            self.main_app.custom_alphabet = self.translators[2]
+        else:
+            self.main_app.custom_alphabet = [
+                "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+                "u", "v", "w", "x", "y", "z",
+            ]
+
+        try:
+            self.main_app.tab_dictionary.update_word_display()
+        except AttributeError:
+            pass
+
+        self.sort_data = data
+
+        self.save_data()
+
+    def save_data(self):
+        with open(f"{self.main_app.app_data_dir}\\alphabet.json", "w") as file:
+            json.dump(self.sort_data, file, indent=4)
+
+    def load_data(self):
+        self.blocks = []
+        self.sort_data = []
+        self.translators = [{}, {}, []]
+
+        try:
+            with open(f"{self.main_app.app_data_dir}\\alphabet.json", "r") as file:
+                self.sort_data = json.load(file)
+
+                for data in self.sort_data:
+                    self.add_block(True, data)
+
+                    self.translators[0][data["letter"]] = data["ipa"]
+                    self.translators[1][data["ipa"]] = data["letter"]
+                    self.translators[2].append(data["letter"])
+
+            if self.translators[2]:
+                self.main_app.custom_alphabet = self.translators[2]
+            else:
+                self.main_app.custom_alphabet = [
+                    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+                    "u", "v", "w", "x", "y", "z",
+                ]
+
+            self.refresh_layout()
+
+        except FileNotFoundError:
+            self.refresh_layout()
+        except json.decoder.JSONDecodeError as e:
+            self.refresh_layout()
+            print(e)
+
+    def populate_ipa(self):
+        dialog = WarningDialog("This will write the default IPA you have made below to all empty IPA fields. Any ones manually entered will remain the same. Do you wish to continue?", self)
+        if dialog.exec():
+            progress = QProgressDialog("Populating IPA Fields...", "Cancel", 0, len(self.main_app.dictionary), self)
+            progress.setWindowTitle("Please Wait")
+            progress.setWindowModality(Qt.WindowModal)  # Blocks input to the main window
+            progress.setMinimumDuration(0)
+
+            for word in self.main_app.dictionary:
+                if not word["ipa"]:
+                    word["ipa"] = self.word_to_ipa(word["conlang"])
+                progress.setValue(progress.value() + 1)
+
+            progress.setValue(progress.value() + 1)
+
+            self.main_app.save_dictionary()
+
+    def word_to_ipa(self, word: str):
+        return "".join([self.translators[0].get(char, char) for char in word.lower()])
 
 class FlowLayout(QLayout):
     def __init__(self, parent=None, margin=-1, h_spacing=-1, v_spacing=-1):

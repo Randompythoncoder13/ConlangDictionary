@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMessageBox, QFileDialog, QErrorMessage
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence
+from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence, QFont
 
 from src.dialogs import OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, WarningDialog, DebugDialog
 from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font, process_font
@@ -68,6 +68,7 @@ class ConlangDictionaryApp(QMainWindow):
         self.db.migrate_from_json(self.app_data_dir)
 
         self.custom_font_on = False
+        self.custom_alphabet = []
 
         # --- Load Data from SQL ---
         self.dictionary = self.load_dictionary()
@@ -172,13 +173,13 @@ class ConlangDictionaryApp(QMainWindow):
 
         self.create_menu_bar()
 
+        self.tab_alphabet = AlphabetTab(self)
         self.tab_dictionary = DictionaryTab(self)
         self.tab_word_generator = WordGenTab(self)
         self.tab_grammar = GrammarTab(self)
         self.tab_ipa = IPATab(self)
         self.tab_stats = StatsTab(self)
         self.tab_help = HelpTab(self)
-        self.tab_alphabet = AlphabetTab(self)
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
         self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
@@ -263,11 +264,23 @@ class ConlangDictionaryApp(QMainWindow):
             self.grammar_data = self.load_grammar()
             self.presents = self.load_presents()
             self.font = self.load_font()
+            self.font_family_name = process_font(self.font_file) if self.font_file else ""
+
+            self.tab_dictionary.font = self.font_family_name
+            if self.font_family_name:
+                self.tab_alphabet.font = QFont(self.font_family_name)
+                self.tab_alphabet.font_exist = True
+                self.tab_alphabet.custom_font_on = True
+            else:
+                self.tab_alphabet.font_exist = False
+
+            self.tab_word_generator.reset()
 
             self.tab_dictionary.update_word_display()
             self.tab_dictionary.update_tag_filter_listbox()
             self.tab_grammar.update_grammar_table_listbox()
             self.tab_grammar.load_grammar_rules()
+            self.tab_alphabet.load_data()
 
             self.tab_stats.refresh_stats_page()
             self.main_notebook.setCurrentIndex(0)
@@ -321,7 +334,7 @@ class ConlangDictionaryApp(QMainWindow):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
 
         if file_name:
-            with open(f"{file_name}", "w", newline='') as f:
+            with open(f"{file_name}", "w", encoding='utf-8', newline='') as f:
                 headers = [
                     'conlang', 'english', 'syllabication', 'ipa', 'pos', 'description', 'tags', 'roots', 'derived',
                     'synonyms', 'antonyms'
@@ -332,13 +345,12 @@ class ConlangDictionaryApp(QMainWindow):
                 writer.writeheader()
 
                 for entry in self.dictionary:
-                    print(entry)
                     row_data = {
                         'conlang': entry.get('conlang', ''),
                         'english': '|'.join(entry.get('english', [])),
                         'syllabication': '|'.join(entry.get('syllable', '')),
                         'ipa': '|'.join(entry.get('ipa', '')),
-                        'pos': entry.get('pos', ''),
+                        'pos': '|'.join(entry.get('pos', [])),
                         'description': entry.get('description', ''),
                         'tags': '|'.join(entry.get('tags', [])),
                         'roots': '|'.join(self.tab_dictionary.get_entry_by_id(root_id)['conlang'] for root_id in

@@ -31,13 +31,20 @@ This application provides a comprehensive suite of tools for conlang development
    + Grammar Tables: Create and manage multiple tables for things like noun declensions, verb conjugations, or affix lists. The table editor supports adding/removing rows and columns and editing headers. Requires manual save.
 
 
-4. IPA Chart Tab
+4. Custom Alphabet Tab
+   + Define Letters: Input single characters for your alphabet and assign default IPA pronunciations.
+   + Custom Sorting Order: Arrange letter blocks left-to-right to directly control how words are sorted alphabetically in the Dictionary Tab.
+   + Populating IPA: Automatically generate pronunciations for dictionary words with blank IPA fields based on your defined letter-to-IPA mapping (this safely preserves any manually entered pronunciations).
+   + Display Options: Toggle your imported custom conlang font to display your alphabet blocks.
+
+
+5. IPA Chart Tab
    + Interactive IPA Tables: View comprehensively mapped charts for Pulmonic Consonants, Non-Pulmonic Consonants, Vowels, and Other symbols.
    + Audio Playback: Click the speaker icon next to compatible IPA characters to hear their pronunciation.
    + Copy to Clipboard: Click on any IPA cell to instantly copy the character to your clipboard.
 
 
-5. Statistics Tab
+6. Statistics Tab
    + At-a-Glance Info: Get a quick overview of your dictionary, including:
      + Total word count
      + Number of root words (no etymological parents)
@@ -46,7 +53,7 @@ This application provides a comprehensive suite of tools for conlang development
      + Word counts by tag
 
 
-6. How To Use / Help Tab
+7. How To Use / Help Tab
    + Built-in Guide: A comprehensive help tab that explains all the application's features.
 
 
@@ -56,14 +63,13 @@ File Menu
   + Import/Export: Back up your entire project (dictionary, grammar, tags) to a .zip file, or import a project from a .zip file.
   + CSV Export: Export your dictionary list to a .csv file for use in other applications.
 
-Settings Menu
-  + Theme: Toggle between Light and Dark mode.
-
 Project
   + Custom Fonts: Import .ttf or .otf font files to render your custom conlang script dynamically throughout the application.
 
-Feature Request:
+Support & Feedback Menu
   + Request a Feature: Link to a [Google Form](https://forms.gle/Tbcp4ZTEdrRSxUwF9) where you can request a new feature.
+  + Report a Bug: Link to a [Google Form](https://forms.gle/VxbFc5RZt55Q69a36) where you can report a bug.
+  + Support Project on Ko-Fi: [Link](https://ko-fi.com/mastercheese129) to give a small donation to the project.
 
 ### How to Run
 
@@ -89,13 +95,23 @@ Running the Application
 |   |-- db_manager.py
 |   |-- dialogs.py
 |   |-- functions.py
-|   |-- help.txt
 |   |-- IPA_tables.py
 |   |-- simulated_kozuka_logic.py
 |   |-- wizards.py
+|   |-- /tabs
+|       |-- alphabet_tab.py
+|       |-- dictionary_tab.py
+|       |-- grammar_tab.py
+|       |-- help_tab.py
+|       |-- ipa_tab.py
+|       |-- stats_tab.py
+|       |-- word_gen_tab.py
 |
 |-- /assets
     |-- logo.png
+    |-- /font
+    |   |-- Charis-Regular.ttf
+    |
     |-- /ipa_sounds
         |-- !.mp3
         |-- a.mp3
@@ -113,6 +129,3 @@ Your conlang projects are stored locally on your computer in your user's applica
 + Linux: `/home/<YourUser>/.local/share/ConlangDictionary`
 
 Each project you create will be a subfolder in this location. The app uses a localized SQLite database (project.db) to efficiently store your dictionary, grammar tables, tags, and presets. Note: Older JSON-based projects are automatically backed up and migrated to this new database format upon opening. Your custom fonts and theme preferences are also saved directly in your project's directory.
-
-### Donations
-If you wish to donate in support of the project, you can do so [here](https://ko-fi.com/mastercheese129) on ko-fi.

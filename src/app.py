@@ -146,6 +146,7 @@ class ConlangDictionaryApp(QMainWindow):
         return self.db.get_presets()
 
     def load_font(self):
+        self.custom_font_on = False
         self.font_file = os.path.join(self.app_data_dir, "font.ttf")
         if not os.path.exists(self.font_file):
             self.font_file = os.path.join(self.app_data_dir, "font.otf")

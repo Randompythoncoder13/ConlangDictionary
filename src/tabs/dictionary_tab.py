@@ -15,6 +15,8 @@ class DictionaryTab(QWidget):
     def __init__(self, main_app):
         super().__init__()
         self.main_app = main_app
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
 
         main_layout = QHBoxLayout(self)
         self.custom_font_on = self.main_app.custom_font_on
@@ -612,6 +614,9 @@ class DictionaryTab(QWidget):
         item = self.tree.item(row, 0)
         if item:
             self.tree.scrollToItem(item)
+
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
 
     def get_entry_by_id(self, word_id):
         return next((item for item in self.main_app.dictionary if item.get("id") == word_id), None)

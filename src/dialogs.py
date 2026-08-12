@@ -4,223 +4,153 @@ import gc
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
-    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem
+    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem, QStyle
 )
 from PySide6.QtCore import Qt
 
+from custom_widgets import IPALineEdit, MultiSelectComboBox
 
-class EditWordDialog(QDialog):
+
+class WordDialog(QDialog):
     """
-    A dialog window for editing an existing dictionary entry.
+    A unified dialog window for adding a new word or editing an existing dictionary entry.
     """
 
-    def __init__(self, entry_to_edit, word_classes, parent):
+    def __init__(self, word_classes, parent=None, entry_to_edit=None, default_word=None):
         super().__init__(parent)
         self.info_parent = parent
+        self.word_classes = word_classes or []
         self.entry_to_edit = entry_to_edit
-        self.word_classes = word_classes
+        self.is_edit_mode = entry_to_edit is not None
         self.new_entry_data = None
 
-        self.setWindowTitle(f"Edit '{self.entry_to_edit['conlang']}'")
+        # Setup Window Properties
+        title = f"Edit '{self.entry_to_edit['conlang']}'" if self.is_edit_mode else "Add Word"
+        self.setWindowTitle(title)
         self.setModal(False)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-        self.setMinimumSize(300, 400)
+        self.setMinimumSize(500, 400)
 
         layout = QGridLayout(self)
         self.setLayout(layout)
 
-        # Form fields
+        # 1. Conlang Word
         layout.addWidget(QLabel("Conlang Word:"), 0, 0)
         self.con_entry = QLineEdit()
-        self.con_entry.setText(entry_to_edit['conlang'])
-        if self.info_parent.custom_font_on:
-            if self.info_parent.font:
-                # noinspection PyTypeChecker
-                self.con_entry.setFont(self.info_parent.font)
-        layout.addWidget(self.con_entry, 0, 1)
+        if self.is_edit_mode:
+            self.con_entry.setText(self.entry_to_edit['conlang'])
+        elif default_word:
+            self.con_entry.setText(default_word)
+        layout.addWidget(self.con_entry, 0, 1, 1, 2)
 
-        # Join English words back into a comma-separated string
-        english_str = ", ".join(entry_to_edit.get("english", []))
+        # 2. English Translation
         layout.addWidget(QLabel("English Translation:"), 1, 0)
         self.eng_entry = QLineEdit()
-        self.eng_entry.setText(english_str)
-        layout.addWidget(self.eng_entry, 1, 1)
+        if self.is_edit_mode:
+            self.eng_entry.setText(", ".join(self.entry_to_edit.get("english", [])))
+        else:
+            self.eng_entry.setPlaceholderText("e.g., set, place")
+        layout.addWidget(self.eng_entry, 1, 1, 1, 2)
 
+        # 3. Syllabication
         layout.addWidget(QLabel("Syllabication:"), 2, 0)
         self.syllable_entry = QLineEdit()
-        if entry_to_edit['syllable']:
-            self.syllable_entry.setText(entry_to_edit['syllable'])
+        if self.is_edit_mode and self.entry_to_edit.get('syllable'):
+            self.syllable_entry.setText(self.entry_to_edit['syllable'])
         else:
             self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
+        layout.addWidget(self.syllable_entry, 2, 1, 1, 2)
+
         if self.info_parent.custom_font_on:
             if self.info_parent.font:
-                # noinspection PyTypeChecker
-                self.syllable_entry.setFont(self.info_parent.font)
-        layout.addWidget(self.syllable_entry, 2, 1)
-
-        layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
-        self.ipa_entry = QLineEdit()
-        if entry_to_edit['ipa']:
-            self.ipa_entry.setText(entry_to_edit['ipa'])
-        else:
-            self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
-        layout.addWidget(self.ipa_entry, 3, 1)
-
-        layout.addWidget(QLabel("Part of Speech:"), 4, 0)
-        self.pos_box = QComboBox()
-        self.pos_box.addItems(self.word_classes)
-        self.pos_box.setCurrentText(entry_to_edit['pos'])
-        layout.addWidget(self.pos_box, 4, 1)
-
-        layout.addWidget(QLabel("Description:"), 5, 0, Qt.AlignmentFlag.AlignTop)
-        self.desc_text = QTextEdit()
-        self.desc_text.setText(entry_to_edit['description'])
-        self.desc_text.setMinimumHeight(100)
-        layout.addWidget(self.desc_text, 5, 1)
-
-        # Join tags back into a comma-separated string
-        tags_str = ", ".join(entry_to_edit.get('tags', []))
-        layout.addWidget(QLabel("Tags (comma-sep):"), 6, 0)
-        self.tags_entry = QLineEdit()
-        self.tags_entry.setText(tags_str)
-        layout.addWidget(self.tags_entry, 6, 1)
-
-        # Buttons
-        button_box = QHBoxLayout()
-        self.save_button = QPushButton("Save")
-        self.save_button.clicked.connect(self.save_changes)
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)  # Closes the dialog
-
-        button_box.addStretch()
-        button_box.addWidget(self.save_button)
-        button_box.addWidget(self.cancel_button)
-        layout.addLayout(button_box, 7, 0, 1, 2)
-
-    def save_changes(self):
-        # Package up the data for the main window to process
-        self.new_entry_data = {
-            "conlang": self.con_entry.text().strip(),
-            "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
-            "pos": self.pos_box.currentText(),
-            "description": self.desc_text.toPlainText().strip(),
-            "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()],
-            "ipa": self.ipa_entry.text().strip(),
-            "syllable": self.syllable_entry.text().strip()
-        }
-
-        print(self.ipa_entry.text().strip())
-
-        if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
-            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
-            self.new_entry_data = None  # Invalidate data
-            return
-
-        self.accept()  # Close the dialog
-
-
-class AddWordDialog(QDialog):
-    def __init__(self, word=None, word_classes=None, parent=None):
-        super().__init__(parent)
-        if word_classes is None:
-            word_classes = []
-        self.info_parent = parent
-        self.word = word
-        self.word_classes = word_classes
-        self.new_entry_data = None
-
-        self.setWindowTitle(f"Add Word")
-        self.setModal(False)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-        self.setMinimumSize(300, 400)
-
-        layout = QGridLayout(self)
-        self.setLayout(layout)
-
-        # Form fields
-        layout.addWidget(QLabel("Conlang Word:"), 0, 0)
-        self.con_entry = QLineEdit()
-        if self.word:
-            self.con_entry.setText(word)
-        if self.info_parent.custom_font_on:
-            if self.info_parent.font:
-                # noinspection PyTypeChecker
                 self.con_entry.setFont(self.info_parent.font)
-        layout.addWidget(self.con_entry, 0, 1)
-
-        layout.addWidget(QLabel("English Translation:"), 1, 0)
-        self.eng_entry = QLineEdit()
-        self.eng_entry.setPlaceholderText("e.g., set, place")
-        layout.addWidget(self.eng_entry, 1, 1)
-
-        layout.addWidget(QLabel("Syllabication:"), 2, 0)
-        self.syllable_entry = QLineEdit()
-        self.syllable_entry.setPlaceholderText("e.g., ex·am·ple")
-        if self.info_parent.custom_font_on:
-            if self.info_parent.font:
-                # noinspection PyTypeChecker
                 self.syllable_entry.setFont(self.info_parent.font)
-        layout.addWidget(self.syllable_entry, 2, 1)
 
+        # 4. IPA Pronunciation
         layout.addWidget(QLabel("IPA Pronunciation:"), 3, 0)
-        self.ipa_entry = QLineEdit()
-        self.ipa_entry.setPlaceholderText("e.g., ɛɡzˈampə͡l")
+        self.ipa_entry = IPALineEdit()
+        if self.is_edit_mode and self.entry_to_edit.get('ipa'):
+            self.ipa_entry.setText(self.entry_to_edit['ipa'])
         layout.addWidget(self.ipa_entry, 3, 1)
 
-        layout.addWidget(QLabel("Part of Speech:"), 4, 0)
-        self.pos_box = QComboBox()
-        self.pos_box.addItems(self.word_classes)
-        self.pos_box.setCurrentIndex(-1)
-        layout.addWidget(self.pos_box, 4, 1)
+        self.btn_refresh_ipa = QPushButton("")
+        refresh_icon = self.btn_refresh_ipa.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        self.btn_refresh_ipa.setIcon(refresh_icon)
+        self.btn_refresh_ipa.resize(50, 50)
+        self.btn_refresh_ipa.clicked.connect(self.fill_ipa)
+        layout.addWidget(self.btn_refresh_ipa, 3, 2)
 
+        # 5. Part of Speech
+        layout.addWidget(QLabel("Part of Speech:"), 4, 0)
+        self.pos_box = MultiSelectComboBox()
+        self.pos_box.addItems(self.word_classes)
+        if self.is_edit_mode:
+            self.pos_box.set_selected(self.entry_to_edit.get('pos', []))
+        layout.addWidget(self.pos_box, 4, 1, 1, 2)
+
+        # 6. Description
         layout.addWidget(QLabel("Description:"), 5, 0, Qt.AlignmentFlag.AlignTop)
         self.desc_text = QTextEdit()
         self.desc_text.setMinimumHeight(100)
-        layout.addWidget(self.desc_text, 5, 1)
+        if self.is_edit_mode:
+            self.desc_text.setText(self.entry_to_edit.get('description', ''))
+        layout.addWidget(self.desc_text, 5, 1, 1, 2)
 
-        # Join tags back into a comma-separated string
+        # 7. Tags
         layout.addWidget(QLabel("Tags (comma-sep):"), 6, 0)
         self.tags_entry = QLineEdit()
-        self.tags_entry.setPlaceholderText("e.g., informal, tech")
-        layout.addWidget(self.tags_entry, 6, 1)
+        if self.is_edit_mode:
+            self.tags_entry.setText(", ".join(self.entry_to_edit.get('tags', [])))
+        else:
+            self.tags_entry.setPlaceholderText("e.g., informal, tech")
+        layout.addWidget(self.tags_entry, 6, 1, 1, 2)
 
         # Buttons
         button_box = QHBoxLayout()
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_changes)
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)  # Closes the dialog
+        self.cancel_button.clicked.connect(self.reject)
 
         button_box.addStretch()
         button_box.addWidget(self.save_button)
         button_box.addWidget(self.cancel_button)
-        layout.addLayout(button_box, 7, 0, 1, 2)
+        layout.addLayout(button_box, 7, 0, 1, 3)
 
     def save_changes(self):
         # Package up the data for the main window to process
-
         self.new_entry_data = {
             "conlang": self.con_entry.text().strip(),
             "english": [e.strip() for e in self.eng_entry.text().strip().split(',') if e.strip()],
-            "pos": self.pos_box.currentText(),
+            "pos": self.pos_box.get_selected(),
             "description": self.desc_text.toPlainText().strip(),
             "tags": [t.strip() for t in self.tags_entry.text().strip().split(',') if t.strip()],
             "ipa": self.ipa_entry.text().strip(),
             "syllable": self.syllable_entry.text().strip()
         }
 
-        print(self.ipa_entry.text().strip())
-
-        if not self.new_entry_data["conlang"] or not self.new_entry_data["english"]:
-            QMessageBox.warning(self, "Input Error", "Conlang and English fields are required.")
-            self.new_entry_data = None  # Invalidate data
+        # Consolidated Validation
+        if not self.new_entry_data["conlang"]:
+            QMessageBox.warning(self, "Input Error", "Conlang field is required.")
+            self.new_entry_data = None
             return
 
-        if not self.new_entry_data["pos"]:
-            QMessageBox.warning(self, "Input Error", "Part of Speech is required.")
+        if not self.new_entry_data["english"]:
+            QMessageBox.warning(self, "Input Error", "English translation is required.")
+            self.new_entry_data = None
             return
 
-        self.accept()  # Close the dialog
+        if not self.new_entry_data["pos"]:  # Checks if the list is empty
+            QMessageBox.warning(self, "Input Error", "At least one Part of Speech is required.")
+            self.new_entry_data = None
+            return
+
+        self.accept()
+
+    def fill_ipa(self):
+        word = self.con_entry.text().strip()
+        ipa = self.info_parent.main_app.tab_alphabet.word_to_ipa(word)
+        self.ipa_entry.setText(ipa)
 
 
 class ManageTagsDialog(QDialog):

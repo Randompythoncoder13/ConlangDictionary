@@ -35,8 +35,10 @@ This application helps you create, manage, and explore your constructed language
 * Project:
     - Import Font: Imports a custom .ttf or .otf font file to display your conlang words in the application.
 
-* Feature Request:
+* Support & Feedback:
     - Request a Feature: Link to a Google Form where you can request a new feature.
+    - Report a Bug: Link to a Google Form where you can report a bug.
+    - Support Project on Ko-Fi: Give a small donation to the project.
 
 == Dictionary Tab ==
 
@@ -86,6 +88,29 @@ This tab is for your language's documentation.
     - Delete Table: Deletes the selected table.
     - Add/Remove Row/Column: Use the editor buttons to resize the table. Double-click headers to edit them.
     - IMPORTANT: You must click "Save Current Table" to save your changes to the selected table.
+
+== Custom Alphabet Tab ==
+
+This tab allows you to define the specific letters of your conlang, set their default pronunciations, and establish your language's unique alphabetical sorting order.
+
+* Adding Letters:
+    - Use the "Letter" field to input a single character for your alphabet. You cannot add duplicate letters.
+    - Use the "IPA" field to enter the default pronunciation for that letter.
+    - Click "Add to Alphabet" to create a new letter block.
+
+* Managing Your Alphabet:
+    - Custom Sorting: The left-to-right sequence of your letter blocks directly controls how words are sorted alphabetically in the Dictionary Tab.
+    - Moving Blocks: Use the left (◀) and right (▶) arrow buttons at the bottom of each block to change their order.
+    - Deleting Blocks: Click the red "✕" in the top-right corner of a block to remove it from your alphabet.
+
+
+* Populating IPA:
+    - Click the "Populate Empty IPA Fields" button to automatically generate pronunciations for your dictionary words based on the letter-to-IPA mapping you defined in this tab.
+    - This tool will only fill in blank IPA fields. Any pronunciations you have manually entered in your dictionary will be completely safe and left as-is.
+
+
+* Display Options:
+    - Click "Toggle Custom Font" to switch the letter blocks between your default system font and your imported custom conlang font.
 
 == IPA Chart Tab ==
 

@@ -11,6 +11,7 @@ class DatabaseManager:
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
         self._migrate_to_uuid()
+        self._migrate_pos_to_list()
 
     def _create_tables(self):
         cursor = self.conn.cursor()
@@ -36,6 +37,25 @@ class DatabaseManager:
         cursor.execute('CREATE TABLE IF NOT EXISTS parts_of_speech (name TEXT PRIMARY KEY)')
         cursor.execute('CREATE TABLE IF NOT EXISTS grammar (id INTEGER PRIMARY KEY, rules TEXT, tables TEXT)')
         cursor.execute('CREATE TABLE IF NOT EXISTS presets (name TEXT PRIMARY KEY, main_pattern TEXT, patterns TEXT)')
+        self.conn.commit()
+
+    def _migrate_pos_to_list(self):
+        """Converts legacy plain-text POS fields into JSON lists."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, pos FROM dictionary")
+        rows = cursor.fetchall()
+
+        for row in rows:
+            pos_val = row['pos']
+            # Check if it exists and is NOT already a JSON list
+            if pos_val and not (pos_val.startswith('[') and pos_val.endswith(']')):
+                # It's an old plain string; wrap it in a list and convert to JSON
+                new_pos = json.dumps([pos_val])
+                cursor.execute("UPDATE dictionary SET pos = ? WHERE id = ?", (new_pos, row['id']))
+            elif not pos_val:
+                # Handle completely empty/null cases safely
+                cursor.execute("UPDATE dictionary SET pos = ? WHERE id = ?", (json.dumps([]), row['id']))
+
         self.conn.commit()
 
     def _migrate_to_uuid(self):
@@ -104,8 +124,15 @@ class DatabaseManager:
                                     synonyms, antonyms)
                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    ''', (
-                                       entry['id'], entry.get('conlang', ''), json.dumps(entry.get('english', [])),
-                                       entry.get('pos', 'Other'), entry.get('description', ''),
+                                        entry['id'],
+                                        entry.get('conlang', ''),
+                                        json.dumps(entry.get('english', [])),
+
+                                        # Wrap POS in a list if it's a string, then dump to JSON
+                                        json.dumps(entry.get('pos', []) if isinstance(entry.get('pos'), list) else [
+                                            entry.get('pos', 'Other')]),
+
+                                        entry.get('description', ''),
                                        json.dumps(entry.get('tags', [])), json.dumps(entry.get('roots', [])),
                                        json.dumps(entry.get('derived', [])), entry.get('ipa', ''),
                                        entry.get('syllable', ''), json.dumps(entry.get('synonyms', [])),
@@ -151,7 +178,7 @@ class DatabaseManager:
         dict_list = []
         for row in rows:
             entry = dict(row)
-            for field in ['english', 'tags', 'roots', 'derived', 'synonyms', 'antonyms']:
+            for field in ['english', 'pos', 'tags', 'roots', 'derived', 'synonyms', 'antonyms']:
                 entry[field] = json.loads(entry[field]) if entry[field] else []
             dict_list.append(entry)
         return dict_list
@@ -165,9 +192,17 @@ class DatabaseManager:
                            (id, conlang, english, pos, description, tags, roots, derived, ipa, syllable, synonyms, antonyms)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            ''', (
-                               entry.get('id', str(uuid.uuid4())), entry['conlang'], json.dumps(entry['english']), entry['pos'], entry['description'],
-                               json.dumps(entry['tags']), json.dumps(entry['roots']), json.dumps(entry['derived']),
-                               entry.get('ipa', ''), entry.get('syllable', ''), json.dumps(entry.get('synonyms', [])),
+                               entry.get('id', str(uuid.uuid4())),
+                               entry['conlang'],
+                               json.dumps(entry['english']),
+                               json.dumps(entry.get('pos', [])),
+                               entry['description'],
+                               json.dumps(entry['tags']),
+                               json.dumps(entry['roots']),
+                               json.dumps(entry['derived']),
+                               entry.get('ipa', ''),
+                               entry.get('syllable', ''),
+                               json.dumps(entry.get('synonyms', [])),
                                json.dumps(entry.get('antonyms', []))
                            ))
         self.conn.commit()

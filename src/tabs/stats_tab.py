@@ -29,8 +29,9 @@ class StatsTab(QWidget):
 
         for word in self.main_app.dictionary:
             pos = word.get("pos", "Other")
-            if pos in parts_of_speech:
-                parts_of_speech[pos] += 1
+            for part in pos:
+                if part in parts_of_speech:
+                    parts_of_speech[part] += 1
 
             for tag in word.get("tags", []):
                 if tag in tags:

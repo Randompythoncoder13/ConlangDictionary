@@ -3,10 +3,13 @@ import os
 import csv
 import shutil
 from pathlib import Path
+import gc
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMessageBox, QFileDialog, QErrorMessage
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequence, QFont
+
+import qdarktheme
 
 from src.dialogs import OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, WarningDialog, DebugDialog
 from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font, process_font
@@ -170,6 +173,14 @@ class ConlangDictionaryApp(QMainWindow):
 
     def create_widgets(self):
         self.main_notebook = QTabWidget()
+        self.main_notebook.setStyleSheet("""
+            QTabBar::tab {
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+            }
+        """)
         self.setCentralWidget(self.main_notebook)
 
         self.create_menu_bar()
@@ -192,6 +203,14 @@ class ConlangDictionaryApp(QMainWindow):
 
     def create_menu_bar(self):
         self.menu_bar = self.menuBar()
+        self.menu_bar.setStyleSheet("""
+            QMenuBar::item {
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+            }
+        """)
 
         fileMenu = self.menu_bar.addMenu("&File")
         settingsMenu = self.menu_bar.addMenu("Settings")
@@ -293,12 +312,9 @@ class ConlangDictionaryApp(QMainWindow):
     def delete_project(self):
         dialog = ImportantWarningDialog("Are you sure you wish to delete this project?", self)
         if dialog.exec():
-            if hasattr(self, 'db') and self.db is not None:
-                if hasattr(self.db, 'close'):
-                    self.db.close()
-                elif hasattr(self.db, 'conn'):
-                    self.db.conn.close()
-                self.db = None
+            self.db.close()
+            self.db = None
+            gc.collect()
 
             try:
                 shutil.rmtree(self.app_data_dir)
@@ -307,29 +323,39 @@ class ConlangDictionaryApp(QMainWindow):
                 return
 
             open_dialog = OpenProjectDialog(self, True)
-            open_dialog.exec()
+            if open_dialog.exec():
+                self.db_path = os.path.join(self.app_data_dir, "project.db")
+                self.db = DatabaseManager(self.db_path)
+                self.db.migrate_from_json(self.app_data_dir)
 
-            self.db_path = os.path.join(self.app_data_dir, "project.db")
-            self.db = DatabaseManager(self.db_path)
-            self.db.migrate_from_json(self.app_data_dir)
+                self.dictionary = self.load_dictionary()
+                self.all_tags, self.word_classes = self.load_tags()
+                self.grammar_data = self.load_grammar()
+                self.presents = self.load_presents()
+                self.font = self.load_font()
+                self.font_family_name = process_font(self.font_file) if self.font_file else ""
 
-            self.dictionary = self.load_dictionary()
-            self.all_tags, self.word_classes = self.load_tags()
-            self.grammar_data = self.load_grammar()
-            self.presents = self.load_presents()
-            self.font = self.load_font()
-            if self.font_file:
-                self.font_family_name = process_font(self.font_file)
+                self.tab_dictionary.font = self.font_family_name
+                if self.font_family_name:
+                    self.tab_alphabet.font = QFont(self.font_family_name)
+                    self.tab_alphabet.font_exist = True
+                    self.tab_alphabet.custom_font_on = True
+                else:
+                    self.tab_alphabet.font_exist = False
+
+                self.tab_word_generator.reset()
+
+                self.tab_dictionary.update_word_display()
+                self.tab_dictionary.update_tag_filter_listbox()
+                self.tab_grammar.update_grammar_table_listbox()
+                self.tab_grammar.load_grammar_rules()
+                self.tab_alphabet.load_data()
+
+                self.tab_stats.refresh_stats_page()
+                self.main_notebook.setCurrentIndex(0)
+
             else:
-                self.font_family_name = ""
-
-            self.tab_dictionary.update_word_display()
-            self.tab_dictionary.update_tag_filter_listbox()
-            self.tab_grammar.update_grammar_table_listbox()
-            self.tab_grammar.load_grammar_rules()
-
-            self.tab_stats.refresh_stats_page()
-            self.main_notebook.setCurrentIndex(0)
+                sys.exit()
 
     def save_csv_file(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV Files (*.csv)")
@@ -427,12 +453,14 @@ class ConlangDictionaryApp(QMainWindow):
 
     def set_dark_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+        qdarktheme.setup_theme("dark", corner_shape="rounded")
 
         with open(self.light_dark_mode, "w") as f:
             f.write("d")
 
     def set_light_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
+        qdarktheme.setup_theme("light", corner_shape="rounded")
 
         with open(self.light_dark_mode, "w") as f:
             f.write("l")

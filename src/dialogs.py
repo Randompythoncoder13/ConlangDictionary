@@ -351,8 +351,11 @@ class OpenProjectDialog(QDialog):
             return
 
         if self.flag:
-            self.info_parent.db.close()
-            gc.collect()
+            try:
+                self.info_parent.db.close()
+                gc.collect()
+            except AttributeError:
+                pass
 
             self.info_parent.app_data_dir = self.info_parent.app_data_master_dir / self.project_select.currentText()
 

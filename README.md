@@ -78,12 +78,13 @@ Prerequisites
 + [PySide6](https://github.com/pyside/pyside-setup): The GUI framework used by the application.
 + [Pyperclip](https://pypi.org/project/pyperclip/): Allows copying to the clipboard.
 + [Playsound3](https://pypi.org/project/playsound3/): Allows for playing sound files.
++ [PyQTDarkTheme-Fork](https://pypi.org/project/PyQtDarkTheme-fork/): Files for the theme used in the app.
 
 You can install dependencies using pip:
-`pip install PySide6 pyperclip playsound3`
+`pip install PySide6 pyperclip playsound3 pyqtdarktheme-fork`
 
 Running the Application
-1. Download: Download the main.py script and the accompanying src directory.
+1. Download: Download the main.py script and the accompanying src and assets directories.
 
 2. Directory Structure: Ensure your files are arranged like this:
 ```

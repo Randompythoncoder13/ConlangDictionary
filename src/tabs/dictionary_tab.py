@@ -96,6 +96,7 @@ class DictionaryTab(QWidget):
 
         self.cols = ("Conlang Word", "English Translation", "Part of Speech", "Tags")
         self.tree = QTableWidget(0, len(self.cols))
+        self.tree.setStyleSheet("QTableWidget { background-color: palette(base); }")
         self.tree.setHorizontalHeaderLabels(self.cols)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)

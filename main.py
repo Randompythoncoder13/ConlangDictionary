@@ -5,14 +5,13 @@ from pathlib import Path
 import sys
 import pyperclip
 import playsound3
+import qdarktheme
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     if getattr(sys, 'frozen', False):
         base_dir = Path(sys.executable).parent
-        print(base_dir)
-        print("this")
     else:
         base_dir = Path(__file__).parent.resolve()
 

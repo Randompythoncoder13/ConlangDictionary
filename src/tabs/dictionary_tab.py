@@ -5,7 +5,8 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog, QListWidgetItem, QRadioButton, QHeaderView,
     QAbstractItemView
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtGui import QKeySequence, QShortcut, QKeyEvent
 
 from src.dialogs import ManagePOSDialog, ManageTagsDialog, WordDialog, WordSelectionDialog
 from src.custom_widgets import DeselectableListWidget, ConlangTableWidgetItem
@@ -33,6 +34,9 @@ class DictionaryTab(QWidget):
 
         search_frame_layout.addWidget(QLabel("Search Term:"))
         self.search_entry = QLineEdit()
+
+        search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        search_shortcut.activated.connect(self.search_entry.setFocus)
 
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
@@ -111,6 +115,8 @@ class DictionaryTab(QWidget):
         self.tree.setSortingEnabled(True)
         self.tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
+        self.tree.installEventFilter(self)
+
         self.tree.itemSelectionChanged.connect(self.on_item_select)
         self.tree.itemDoubleClicked.connect(self.on_item_double_click)
 
@@ -122,8 +128,10 @@ class DictionaryTab(QWidget):
         delete_button.clicked.connect(self.delete_word)
         edit_button = QPushButton("Edit Selected")
         edit_button.clicked.connect(self.edit_word)
+        edit_button.setShortcut("Ctrl+E")
         add_button = QPushButton("Add Word")
         add_button.clicked.connect(lambda: self.add_word(flag=True))
+        add_button.setShortcut("Ctrl+N")
         font_toggle_button = QPushButton("Toggle Custom Font")
         font_toggle_button.clicked.connect(self.toggle_font)
         button_frame.addWidget(delete_button)
@@ -813,3 +821,14 @@ class DictionaryTab(QWidget):
         word_id = item.data(Qt.ItemDataRole.UserRole)
         self.select_word_in_table(word_id)
         self.main_app.main_notebook.setCurrentWidget(self)
+
+    def eventFilter(self, source, event):
+        if source == self.tree and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Backspace or event.key() == Qt.Key.Key_Delete:
+                self.delete_word()
+                return True
+            elif event.key() == Qt.Key.Key_Enter or event.key() == Qt.Key.Key_Return:
+                self.edit_word()
+                return True
+
+        return super().eventFilter(source, event)

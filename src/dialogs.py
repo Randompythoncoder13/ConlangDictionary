@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from custom_widgets import IPALineEdit, MultiSelectComboBox
+from src.custom_widgets import IPALineEdit, MultiSelectComboBox
 
 
 class WordDialog(QDialog):

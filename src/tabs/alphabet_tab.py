@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 
-from custom_widgets import LetterBlock, IPALineEdit
-from dialogs import WarningDialog
+from src.custom_widgets import LetterBlock, IPALineEdit
+from src.dialogs import WarningDialog
 
 
 class AlphabetTab(QWidget):

@@ -425,24 +425,32 @@ class ConlangDictionaryApp(QMainWindow):
 
                 self.db_path = os.path.join(self.app_data_dir, "project.db")
                 self.db = DatabaseManager(self.db_path)
-
                 self.db.migrate_from_json(self.app_data_dir)
 
-                self.dictionary = self.db.get_dictionary()
-                self.all_tags, self.word_classes = self.db.get_tags_and_pos()
-                self.grammar_data = self.db.get_grammar()
-                self.presents = self.db.get_presets()
-
+                self.dictionary = self.load_dictionary()
+                self.all_tags, self.word_classes = self.load_tags()
+                self.grammar_data = self.load_grammar()
+                self.presents = self.load_presents()
                 self.font = self.load_font()
-                if self.font_file:
-                    self.font_family_name = process_font(self.font_file)
+                self.font_family_name = process_font(self.font_file) if self.font_file else ""
+
+                self.tab_dictionary.font = self.font_family_name
+                if self.font_family_name:
+                    self.tab_alphabet.font = QFont(self.font_family_name)
+                    self.tab_alphabet.font_exist = True
+                    self.tab_alphabet.custom_font_on = True
+                else:
+                    self.tab_alphabet.font_exist = False
+
+                self.tab_word_generator.reset()
 
                 self.tab_dictionary.update_word_display()
                 self.tab_dictionary.update_tag_filter_listbox()
                 self.tab_grammar.update_grammar_table_listbox()
                 self.tab_grammar.load_grammar_rules()
-                self.tab_stats.refresh_stats_page()
+                self.tab_alphabet.load_data()
 
+                self.tab_stats.refresh_stats_page()
                 self.main_notebook.setCurrentIndex(0)
                 self.setWindowTitle(project_name)
                 QMessageBox.information(self, "Success", f"Project '{project_name}' imported successfully!")

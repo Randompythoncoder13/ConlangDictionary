@@ -177,7 +177,7 @@ class AlphabetTab(QWidget):
         self.save_data()
 
     def save_data(self):
-        with open(f"{self.main_app.app_data_dir}\\alphabet.json", "w") as file:
+        with open(f"{self.main_app.app_data_dir}/alphabet.json", "w") as file:
             json.dump(self.sort_data, file, indent=4)
 
     def load_data(self):
@@ -186,7 +186,7 @@ class AlphabetTab(QWidget):
         self.translators = [{}, {}, []]
 
         try:
-            with open(f"{self.main_app.app_data_dir}\\alphabet.json", "r") as file:
+            with open(f"{self.main_app.app_data_dir}/alphabet.json", "r") as file:
                 self.sort_data = json.load(file)
 
                 for data in self.sort_data:

@@ -1,3 +1,4 @@
 PySide6
 Pyperclip
 playsound3
+pyqtdarktheme-fork

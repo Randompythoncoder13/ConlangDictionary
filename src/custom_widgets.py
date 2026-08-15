@@ -139,6 +139,8 @@ class IPATable(QTableWidget):
         self.parent = parent
         self.variant = variant
 
+        self.setStyleSheet("QTableWidget { background-color: palette(base); }")
+
         self.setRowCount(rows)
         self.setColumnCount(cols)
 

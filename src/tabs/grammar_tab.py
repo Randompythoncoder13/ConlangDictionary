@@ -73,6 +73,7 @@ class GrammarTab(QWidget):
         table_editor_layout.addLayout(table_edit_controls_layout)
 
         self.table_editor = QTableWidget()
+        self.table_editor.setStyleSheet("QTableWidget { background-color: palette(base); }")
         self.table_editor.horizontalHeader().setSectionsClickable(True)
         self.table_editor.verticalHeader().setSectionsClickable(True)
         self.table_editor.horizontalHeader().sectionDoubleClicked.connect(self.edit_table_header)

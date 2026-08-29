@@ -15,7 +15,7 @@ if __name__ == "__main__":
     else:
         base_dir = Path(__file__).parent.resolve()
 
-    font_path = base_dir / "assets" / "font" / "Charis-Regular.ttf"
+    font_path = base_dir / "assets" / "font" / "JuliaMono-Regular.ttf"
     font_id = QFontDatabase.addApplicationFont(str(font_path))
 
     if font_id != -1:

@@ -232,6 +232,17 @@ class AlphabetTab(QWidget):
     def word_to_ipa(self, word: str):
         return "".join([self.translators[0].get(char, char) for char in word.lower()])
 
+    def update_font(self):
+        self.font_exist = self.main_app.font_exists
+        self.font = QFont(self.main_app.font)
+        self.custom_font_on = self.main_app.custom_font_on
+
+        for block in self.blocks:
+            block.change_font(self.font)
+            block.update_display(self.custom_font_on)
+
+        self.refresh_layout()
+
 class FlowLayout(QLayout):
     def __init__(self, parent=None, margin=-1, h_spacing=-1, v_spacing=-1):
         super().__init__(parent)

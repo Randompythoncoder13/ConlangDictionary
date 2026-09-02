@@ -3,10 +3,10 @@ import uuid
 from PySide6.QtWidgets import (
     QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QLineEdit, QTextEdit, QPushButton, QListWidget,
     QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog, QListWidgetItem, QRadioButton, QHeaderView,
-    QAbstractItemView
+    QAbstractItemView, QApplication
 )
 from PySide6.QtCore import Qt, QTimer, QEvent
-from PySide6.QtGui import QKeySequence, QShortcut, QKeyEvent
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from src.dialogs import ManagePOSDialog, ManageTagsDialog, WordDialog, WordSelectionDialog
 from src.custom_widgets import DeselectableListWidget, ConlangTableWidgetItem
@@ -20,8 +20,6 @@ class DictionaryTab(QWidget):
         self.font = self.main_app.font
 
         main_layout = QHBoxLayout(self)
-        self.custom_font_on = self.main_app.custom_font_on
-        self.font = self.main_app.font
 
         # --- Left Panel ---
         left_panel = QWidget()
@@ -58,6 +56,8 @@ class DictionaryTab(QWidget):
         self.radio_english.toggled.connect(self.update_word_display)
         search_frame_layout.addWidget(self.radio_english)
 
+        search_frame_layout.addSpacing(20)
+
         search_frame_layout.addWidget(QLabel("Filter by Part of Speech:"))
         self.filter_pos_listbox = DeselectableListWidget()
         self.filter_pos_listbox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -67,12 +67,16 @@ class DictionaryTab(QWidget):
 
         self.update_filter_pos_listbox()
 
+        search_frame_layout.addSpacing(20)
+
         search_frame_layout.addWidget(QLabel("Filter by Tags:"))
         self.tag_filter_listbox = DeselectableListWidget()
         self.tag_filter_listbox.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.tag_filter_listbox.itemSelectionChanged.connect(self.update_word_display)
         self.tag_filter_listbox.setFixedHeight(120)
         search_frame_layout.addWidget(self.tag_filter_listbox)
+
+        search_frame_layout.addSpacing(12)
 
         manage_tags_button = QPushButton("Manage Tags")
         manage_tags_button.clicked.connect(self.manage_tags)
@@ -269,10 +273,14 @@ class DictionaryTab(QWidget):
                 if self.main_app.font:
                     conlang_item.setFont(self.main_app.font)
             else:
-                conlang_item.setFont(self.default_font)
+                conlang_item.setFont(QApplication.font())
             english_item = QTableWidgetItem(english_str)
             pos_item = QTableWidgetItem(pos_str)
             tags_item = QTableWidgetItem(tags_str)
+
+            english_item.setFont(QApplication.font())
+            pos_item.setFont(QApplication.font())
+            tags_item.setFont(QApplication.font())
 
             conlang_item.setData(Qt.ItemDataRole.UserRole, entry["id"])
 
@@ -555,6 +563,7 @@ class DictionaryTab(QWidget):
         for tag in sorted(self.main_app.all_tags):
             # noinspection PyTypeChecker
             item = QListWidgetItem(tag)
+            item.setFont(QApplication.font())
             self.tag_filter_listbox.addItem(item)
             if tag in selected_tags:
                 new_items.append(item)
@@ -571,6 +580,7 @@ class DictionaryTab(QWidget):
         for pos in sorted(self.main_app.word_classes):
             # noinspection PyTypeChecker
             item = QListWidgetItem(pos)
+            item.setFont(QApplication.font())
             self.filter_pos_listbox.addItem(item)
             if pos in selected_pos:
                 new_items.append(item)
@@ -832,3 +842,10 @@ class DictionaryTab(QWidget):
                 return True
 
         return super().eventFilter(source, event)
+
+    def refresh_font(self):
+        self.custom_font_on = self.main_app.custom_font_on
+        self.font = self.main_app.font
+        self.custom_font_on = self.main_app.custom_font_on
+
+        self.update_word_display()

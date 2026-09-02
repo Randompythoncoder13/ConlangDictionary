@@ -3,7 +3,7 @@ import sys
 
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QLabel, QHBoxLayout, QStyle, QToolButton, QListWidget, QSizePolicy,
-    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea, QComboBox
+    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea, QComboBox, QTextEdit
 )
 from PySide6.QtGui import QFont, QColor, QPalette, QMouseEvent, QFontMetrics, QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt, QSize, Signal, QPoint, QEvent, QRect
@@ -471,6 +471,9 @@ class LetterBlock(QWidget):
         else:
             self.lbl_small.setText(f"/{self.ipa}/")
 
+    def change_font(self, font):
+        self.custom_font = font
+
 
 class ConlangTableWidgetItem(QTableWidgetItem):
     def __init__(self, text, main_app):
@@ -567,3 +570,25 @@ class MultiSelectComboBox(QComboBox):
                 item.setCheckState(Qt.CheckState.Unchecked)
 
         self._update_display_text()
+
+
+class GrammarEditor(QTextEdit):
+    """Plain-text Markdown editor. Intercepts image paste from the clipboard
+    and forces plain-text paste for regular text (so rich text/HTML from
+    other apps doesn't pollute the Markdown source)."""
+
+    def __init__(self, tab, parent=None):
+        super().__init__(parent)
+        self.tab = tab
+        self.setAcceptRichText(False)
+
+    def insertFromMimeData(self, source):
+        if source.hasImage():
+            self.tab.handle_clipboard_image(source)
+            return
+
+        if source.hasText():
+            self.insertPlainText(source.text())
+            return
+
+        super().insertFromMimeData(source)

@@ -4,126 +4,21 @@ import csv
 import json
 import uuid
 import shutil
+import sys
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QTextEdit, QTextBrowser,
-    QPushButton, QToolButton, QListWidget, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog, QSplitter, QDialog, QDialogButtonBox, QFormLayout,
-    QLineEdit, QFileDialog, QMenu, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QTextBrowser, QPushButton, QToolButton, QListWidget,
+    QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog, QSplitter, QDialog, QFileDialog, QMenu, QApplication
 )
 from PySide6.QtGui import QTextCursor, QFont, QAction, QImage
 from PySide6.QtCore import Qt, QTimer, QPoint, QRect, QEvent, QUrl
 
-from custom_widgets import IPAPickerPopup
+from src.custom_widgets import IPAPickerPopup, GrammarEditor
+from src.dialogs import GlossDialog
+from src.functions import load_sections
 
 TABLE_MACRO_RE = re.compile(r"\{\{table:([^}]+)\}\}")
-DEFAULT_CHAPTERS = ["Phonology", "Morphology", "Syntax"]
-
-
-def _load_sections(main_app):
-    """Load structured chapters from grammar_data['rules'], migrating legacy
-    plain-text rules into a single 'General' chapter on first read."""
-    raw = main_app.grammar_data.get('rules', '')
-
-    if raw:
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                sections = parsed.get('sections')
-                if isinstance(sections, list) and sections:
-                    # Defensive normalization in case of malformed entries
-                    clean = []
-                    for s in sections:
-                        if isinstance(s, dict) and 'title' in s:
-                            clean.append({
-                                "id": s.get("id") or str(uuid.uuid4()),
-                                "title": s["title"],
-                                "content": s.get("content", "")
-                            })
-                    if clean:
-                        return clean
-        except (json.JSONDecodeError, TypeError):
-            pass  # Not JSON -> legacy plain string
-
-    legacy_text = raw if isinstance(raw, str) else ""
-    return [{"id": str(uuid.uuid4()), "title": "General", "content": legacy_text}]
-
-
-class GrammarEditor(QTextEdit):
-    """Plain-text Markdown editor. Intercepts image paste from the clipboard
-    and forces plain-text paste for regular text (so rich text/HTML from
-    other apps doesn't pollute the Markdown source)."""
-
-    def __init__(self, tab, parent=None):
-        super().__init__(parent)
-        self.tab = tab
-        self.setAcceptRichText(False)
-
-    def insertFromMimeData(self, source):
-        if source.hasImage():
-            self.tab.handle_clipboard_image(source)
-            return
-        if source.hasText():
-            self.insertPlainText(source.text())
-            return
-        super().insertFromMimeData(source)
-
-
-class GlossDialog(QDialog):
-    """Modal for building a Leipzig-style interlinear gloss block."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Interlinear Gloss Builder")
-        self.setMinimumWidth(440)
-
-        layout = QFormLayout(self)
-
-        self.original_edit = QLineEdit()
-        self.morphemes_edit = QLineEdit()
-        self.gloss_edit = QLineEdit()
-        self.translation_edit = QLineEdit()
-
-        layout.addRow("Original Text:", self.original_edit)
-        layout.addRow("Morphemes:", self.morphemes_edit)
-        layout.addRow("Gloss:", self.gloss_edit)
-        layout.addRow("Free Translation:", self.translation_edit)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-
-    def get_markdown(self):
-        original = self.original_edit.text().strip()
-        morphemes = self.morphemes_edit.text().strip()
-        gloss = self.gloss_edit.text().strip()
-        translation = self.translation_edit.text().strip()
-
-        return self.get_aligned_gloss(original, morphemes, gloss, translation)
-
-    def get_aligned_gloss(self, line1, line2, line3, line4_translation):
-        # Split the first three lines into tokens
-        tokens1 = line1.split()
-        tokens2 = line2.split()
-        tokens3 = line3.split()
-
-        # Ensure they all have the same number of words
-        if not (len(tokens1) == len(tokens2) == len(tokens3)):
-            raise ValueError("The first three lines must have the same number of space-separated words.")
-
-        aligned_1, aligned_2, aligned_3 = "", "", ""
-
-        # Calculate the max width for each column and pad accordingly
-        for t1, t2, t3 in zip(tokens1, tokens2, tokens3):
-            col_width = max(len(t1), len(t2), len(t3)) + 1  # +1 for spacing
-
-            aligned_1 += t1.ljust(col_width)
-            aligned_2 += t2.ljust(col_width)
-            aligned_3 += t3.ljust(col_width)
-
-        # Print the aligned lines plus the free translation
-        return f"{aligned_1}\n\n{aligned_2}\n\n{aligned_3}\n\n{line4_translation}\n\n"
+FONT_MACRO_RE = re.compile(r"\{\{f:([^}]+)\}\}")
 
 
 class GrammarTab(QWidget):
@@ -134,7 +29,7 @@ class GrammarTab(QWidget):
         self._loading = False
         self._loading_table = False
         self.current_section_index = None
-        self.sections = _load_sections(main_app)
+        self.sections = load_sections(main_app)
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
@@ -150,9 +45,6 @@ class GrammarTab(QWidget):
         self._populate_section_list()
         self.update_grammar_table_listbox()
 
-    # ------------------------------------------------------------------ #
-    # UI construction
-    # ------------------------------------------------------------------ #
     def _build_ui(self):
         outer_layout = QVBoxLayout(self)
         main_splitter = QSplitter(Qt.Orientation.Vertical, self)
@@ -180,8 +72,6 @@ class GrammarTab(QWidget):
 
         self.editor = GrammarEditor(self)
         self.editor.setStyleSheet("QTextEdit { background-color: palette(base); }")
-        if getattr(self.main_app, "custom_font", None):
-            self.editor.setFont(self.main_app.custom_font)
         self.editor.textChanged.connect(self._on_editor_text_changed)
 
         self.preview = QTextBrowser()
@@ -204,6 +94,7 @@ class GrammarTab(QWidget):
         editor_v_layout.addLayout(save_row)
 
         editor_h_layout.addWidget(editor_pane, 1)
+
         return editor_frame
 
     def _build_sections_pane(self):
@@ -221,8 +112,10 @@ class GrammarTab(QWidget):
         rename_btn.clicked.connect(self._rename_section)
         delete_btn = QPushButton("Delete")
         delete_btn.clicked.connect(self._delete_section)
+
         for b in (add_btn, rename_btn, delete_btn):
             btn_row.addWidget(b)
+
         layout.addLayout(btn_row)
 
         return frame
@@ -233,10 +126,12 @@ class GrammarTab(QWidget):
         heading_btn = QToolButton()
         heading_btn.setText("Heading ")
         heading_menu = QMenu(heading_btn)
+
         for level in (1, 2, 3):
             action = QAction(f"Heading {level}", self)
             action.triggered.connect(lambda checked=False, lvl=level: self._insert_heading(lvl))
             heading_menu.addAction(action)
+
         heading_btn.setMenu(heading_menu)
         heading_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         layout.addWidget(heading_btn)
@@ -256,6 +151,10 @@ class GrammarTab(QWidget):
         italic_btn.setFixedWidth(32)
         italic_btn.clicked.connect(lambda: self._wrap_selection("*"))
         layout.addWidget(italic_btn)
+
+        conlang_btn = QPushButton("Conlang")
+        conlang_btn.clicked.connect(lambda: self._wrap_selection("{{f:", "}}"))
+        layout.addWidget(conlang_btn)
 
         bullet_btn = QPushButton("\u2022 List")
         bullet_btn.clicked.connect(self._toggle_bullet_list)
@@ -280,6 +179,7 @@ class GrammarTab(QWidget):
         layout.addWidget(table_macro_btn)
 
         layout.addStretch()
+
         return layout
 
     def _build_tables_pane(self):
@@ -352,21 +252,20 @@ class GrammarTab(QWidget):
         table_editor_layout.addWidget(save_table_btn)
 
         tables_layout.addWidget(table_editor_frame)
+
         return tables_frame
 
-    # ------------------------------------------------------------------ #
-    # Chapter (section) management
-    # ------------------------------------------------------------------ #
     def load_grammar_rules(self):
         """Reload chapters from main_app.grammar_data (e.g. on tab activation)."""
+
         keep_index = self.current_section_index or 0
-        self.sections = _load_sections(self.main_app)
+        self.sections = load_sections(self.main_app)
         self._populate_section_list(select_index=keep_index)
 
     def save_grammar_rules(self):
         self.autosave_timer.stop()
         self._persist_sections()
-        QMessageBox.information(self, "Success", "Grammar chapter saved.")
+        # QMessageBox.information(self, "Success", "Grammar chapter saved.")
 
     def _persist_sections(self):
         payload = json.dumps({"sections": self.sections})
@@ -379,8 +278,10 @@ class GrammarTab(QWidget):
     def _populate_section_list(self, select_index=0):
         self._loading = True
         self.section_list.clear()
+
         for section in self.sections:
             self.section_list.addItem(section['title'])
+
         self._loading = False
 
         if self.sections:
@@ -403,8 +304,10 @@ class GrammarTab(QWidget):
 
     def _add_section(self):
         title, ok = QInputDialog.getText(self, "New Chapter", "Chapter title:")
+
         if not ok or not title.strip():
             return
+
         title = title.strip()
 
         if any(s['title'] == title for s in self.sections):
@@ -422,8 +325,10 @@ class GrammarTab(QWidget):
 
         old_title = self.sections[row]['title']
         title, ok = QInputDialog.getText(self, "Rename Chapter", "Chapter title:", text=old_title)
+
         if not ok or not title.strip():
             return
+
         title = title.strip()
 
         if any(i != row and s['title'] == title for i, s in enumerate(self.sections)):
@@ -445,6 +350,7 @@ class GrammarTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
+
         if reply != QMessageBox.StandardButton.Yes:
             return
 
@@ -455,9 +361,6 @@ class GrammarTab(QWidget):
         self._persist_sections()
         self._populate_section_list(select_index=max(0, row - 1))
 
-    # ------------------------------------------------------------------ #
-    # Editor <-> preview
-    # ------------------------------------------------------------------ #
     def _on_editor_text_changed(self):
         if self._loading or self.current_section_index is None:
             return
@@ -469,6 +372,7 @@ class GrammarTab(QWidget):
 
     def _update_preview(self, markdown_text):
         rendered = self._expand_table_macros(markdown_text)
+        rendered = self._expand_font_macros(rendered)
         self.preview.setMarkdown(rendered)
 
     def _expand_table_macros(self, text):
@@ -478,7 +382,20 @@ class GrammarTab(QWidget):
             if not table:
                 return f"*[Missing table: {name}]*"
             return self._table_to_markdown(table, name)
+
         return TABLE_MACRO_RE.sub(replace, text)
+
+    def _expand_font_macros(self, text):
+        try:
+            font_family = getattr(self.main_app, "font").family()
+        except AttributeError:
+            font_family = "sans-serif"
+
+        def replace(match):
+            content = match.group(1)
+            return f'<span style="font-family: \'{font_family}\';">{content}</span>'
+
+        return FONT_MACRO_RE.sub(replace, text)
 
     @staticmethod
     def _table_to_markdown(table, name):
@@ -498,9 +415,6 @@ class GrammarTab(QWidget):
 
         return "\n".join(lines) + "\n"
 
-    # ------------------------------------------------------------------ #
-    # Formatting toolbar actions
-    # ------------------------------------------------------------------ #
     def _wrap_selection(self, prefix, suffix=None):
         suffix = suffix if suffix is not None else prefix
         cursor = self.editor.textCursor()
@@ -542,15 +456,14 @@ class GrammarTab(QWidget):
 
         edit_cursor = QTextCursor(doc)
         edit_cursor.beginEditBlock()
+
         for b in blocks:
             line_cursor = QTextCursor(b)
             line_cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
             line_cursor.insertText("- ")
+
         edit_cursor.endEditBlock()
 
-    # ------------------------------------------------------------------ #
-    # IPA picker (mirrors IPALineEdit's show/hide-on-click-away pattern)
-    # ------------------------------------------------------------------ #
     def _init_ipa_picker(self):
         self.ipa_picker = IPAPickerPopup(self)
         self.ipa_picker.character_selected.connect(self._insert_ipa_character)
@@ -579,13 +492,22 @@ class GrammarTab(QWidget):
                 btn_rect = QRect(btn_pos, self.ipa_btn.size())
                 if not btn_rect.contains(click_pos):
                     self.ipa_picker.hide()
+
         return super().eventFilter(obj, event)
 
-    # ------------------------------------------------------------------ #
-    # Image handling (file insert + clipboard paste)
-    # ------------------------------------------------------------------ #
     def _ensure_image_dir(self):
-        dest_dir = os.path.join(self.main_app.path, "assets", "imported_images")
+        if sys.platform == "win32":
+            path = self.main_app.path.split('\\')
+        else:
+            path = self.main_app.path.split('/')
+
+        for _ in range(2):
+            try:
+                path.remove('src')
+            except ValueError:
+                pass
+
+        dest_dir = os.path.join('/'.join(path), "assets", "imported_images")
         os.makedirs(dest_dir, exist_ok=True)
         return dest_dir
 
@@ -594,15 +516,18 @@ class GrammarTab(QWidget):
         name, ext = os.path.splitext(filename)
         candidate = filename
         counter = 1
+
         while os.path.exists(os.path.join(directory, candidate)):
             candidate = f"{name}_{counter}{ext}"
             counter += 1
+
         return candidate
 
     def _insert_image(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Insert Image", "", "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)"
         )
+
         if not file_path:
             return
 
@@ -614,6 +539,7 @@ class GrammarTab(QWidget):
             self, "Image Alt Text", "Enter a short description:",
             text=os.path.splitext(dest_name)[0]
         )
+
         if not ok or not alt_text.strip():
             alt_text = os.path.splitext(dest_name)[0]
 
@@ -621,6 +547,7 @@ class GrammarTab(QWidget):
 
     def handle_clipboard_image(self, mime_data):
         """Called by GrammarEditor.insertFromMimeData on image paste."""
+
         image = mime_data.imageData()
         qimage = image if isinstance(image, QImage) else QImage(image)
         if qimage is None or qimage.isNull():
@@ -637,9 +564,6 @@ class GrammarTab(QWidget):
 
         self.editor.insertPlainText(f"![{safe_name}]({filename})")
 
-    # ------------------------------------------------------------------ #
-    # Interlinear gloss + table macro
-    # ------------------------------------------------------------------ #
     def _open_gloss_dialog(self):
         dialog = GlossDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -655,9 +579,6 @@ class GrammarTab(QWidget):
         if ok and name:
             self.editor.insertPlainText(f"{{{{table:{name}}}}}")
 
-    # ------------------------------------------------------------------ #
-    # Grammar table CRUD (retained + extended from the original tab)
-    # ------------------------------------------------------------------ #
     def update_grammar_table_listbox(self):
         self.table_listbox.clear()
         for table_name in sorted(self.main_app.grammar_data['tables'].keys()):
@@ -707,6 +628,7 @@ class GrammarTab(QWidget):
     def _on_table_item_changed(self, _item):
         if self._loading_table:
             return
+
         self.table_autosave_timer.start()
 
     def _autosave_current_table(self):
@@ -737,6 +659,7 @@ class GrammarTab(QWidget):
             for c in range(num_cols):
                 item = self.table_editor.item(r, c)
                 row_data.append(item.text() if item and item.text() is not None else "")
+
             new_data.append(row_data)
 
         for c in range(num_cols):
@@ -753,7 +676,8 @@ class GrammarTab(QWidget):
         self.main_app.save_grammar()
 
         if not silent:
-            QMessageBox.information(self, "Success", f"Table '{table_name}' saved.")
+            pass
+            # QMessageBox.information(self, "Success", f"Table '{table_name}' saved.")
 
     def create_grammar_table(self):
         table_name, ok = QInputDialog.getText(self, "Create Table", "Enter a name for the new table:")
@@ -890,9 +814,6 @@ class GrammarTab(QWidget):
                 self.table_editor.setVerticalHeaderItem(logical_index, QTableWidgetItem(new_text))
                 self.table_autosave_timer.start()
 
-    # ------------------------------------------------------------------ #
-    # Table export / import / insert-into-chapter
-    # ------------------------------------------------------------------ #
     def export_table_csv(self):
         selected_items = self.table_listbox.selectedItems()
         if not selected_items:

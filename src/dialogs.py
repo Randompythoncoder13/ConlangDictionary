@@ -1,14 +1,18 @@
 import sys
 import os
 import gc
+from pathlib import Path
+import shutil
+import json
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel, QLineEdit, QComboBox, QTextEdit, QPushButton, QListWidget,
-    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem, QStyle
+    QMessageBox, QDialog, QDialogButtonBox, QListWidgetItem, QStyle, QFormLayout, QScrollArea, QWidget, QFileDialog
 )
 from PySide6.QtCore import Qt
 
 from src.custom_widgets import IPALineEdit, MultiSelectComboBox
+from src.functions import get_font
 
 
 class WordDialog(QDialog):
@@ -334,14 +338,14 @@ class OpenProjectDialog(QDialog):
         if self.flag:
             folders = os.listdir(self.info_parent.app_data_master_dir)
             try:
-                folders.remove("dark_light_mode.txt")
+                folders.remove("settings.json")
             except ValueError:
                 pass
             return folders
         else:
             folders = os.listdir(self.info_parent.app_data_dir)
             try:
-                folders.remove("dark_light_mode.txt")
+                folders.remove("settings.json")
             except ValueError:
                 pass
             return folders
@@ -590,3 +594,359 @@ class WordSelectionDialog(QDialog):
             self.accept()
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a word.")
+
+
+class GlossDialog(QDialog):
+    """Modal for building a Leipzig-style interlinear gloss block."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Interlinear Gloss Builder")
+        self.setMinimumWidth(440)
+
+        layout = QFormLayout(self)
+
+        self.original_edit = QLineEdit()
+        self.morphemes_edit = QLineEdit()
+        self.gloss_edit = QLineEdit()
+        self.translation_edit = QLineEdit()
+
+        layout.addRow("Original Text:", self.original_edit)
+        layout.addRow("Morphemes:", self.morphemes_edit)
+        layout.addRow("Gloss:", self.gloss_edit)
+        layout.addRow("Free Translation:", self.translation_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def get_markdown(self):
+        original = self.original_edit.text().strip()
+        morphemes = self.morphemes_edit.text().strip()
+        gloss = self.gloss_edit.text().strip()
+        translation = self.translation_edit.text().strip()
+
+        return self.get_aligned_gloss(original, morphemes, gloss, translation)
+
+    def get_aligned_gloss(self, line1, line2, line3, line4_translation):
+        tokens1 = line1.split()
+        tokens2 = line2.split()
+        tokens3 = line3.split()
+
+        if not (len(tokens1) == len(tokens2) == len(tokens3)):
+            QMessageBox.warning(
+                self, "Input Error",
+                "The first three lines must have the same number of space-separated words."
+            )
+
+        aligned_1 = ""
+        aligned_2 = ""
+        aligned_3 = ""
+
+        for t1, t2, t3 in zip(tokens1, tokens2, tokens3):
+            col_width = max(len(t1), len(t2), len(t3)) + 1
+
+            aligned_1 += t1.ljust(col_width)
+            aligned_2 += t2.ljust(col_width)
+            aligned_3 += t3.ljust(col_width)
+
+        return f"{aligned_1}\n\n{aligned_2}\n\n{aligned_3}\n\n{line4_translation}\n\n"
+
+
+class ImageManagementDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.info_parent = parent
+        self.dest_dir = ""
+
+        self.setWindowTitle("Manage Images")
+        self.setModal(True)
+        self.setMinimumSize(300, 400)
+
+        self.main_layout = QVBoxLayout(self)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_widget = QWidget()
+
+        self.box = QGroupBox("Images")
+        self.frame = QGridLayout(self.box)
+
+        scroll_layout = QVBoxLayout(self.scroll_widget)
+        scroll_layout.addWidget(self.box)
+        scroll_layout.addStretch()
+
+        self.scroll_area.setWidget(self.scroll_widget)
+        self.main_layout.addWidget(self.scroll_area)
+
+        self.populate_images()
+
+    def fetch_images(self):
+        if sys.platform == "win32":
+            path = self.info_parent.path.split('\\')
+        else:
+            path = self.info_parent.path.split('/')
+
+        for _ in range(2):
+            try:
+                path.remove('src')
+            except ValueError:
+                pass
+
+        self.dest_dir = os.path.join('/'.join(path), "assets", "imported_images")
+        os.makedirs(self.dest_dir, exist_ok=True)
+
+        images = os.listdir(self.dest_dir)
+        return images
+
+    def populate_images(self):
+        for i in reversed(range(self.frame.count())):
+            widget = self.frame.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+
+        images = self.fetch_images()
+
+        for row, image_name in enumerate(images):
+            name_label = QLabel(image_name)
+            delete_btn = QPushButton("Delete")
+
+            delete_btn.clicked.connect(lambda checked=False, name=image_name: self.delete_image(name))
+
+            self.frame.addWidget(name_label, row, 0)
+            self.frame.addWidget(delete_btn, row, 1)
+
+    def delete_image(self, image_name):
+        file_path = os.path.join(self.dest_dir, image_name)
+
+        reply = QMessageBox.question(
+            self,
+            'Confirm Deletion',
+            f"Are you sure you want to delete '{image_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                os.remove(file_path)
+                self.populate_images()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not delete file:\n{e}")
+
+
+class CustomFontManagerDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.info_parent = parent
+
+        self.setWindowTitle("Font Manager")
+        self.resize(300, 150)
+
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        self.status_label = QLabel()
+        layout.addWidget(self.status_label)
+
+        self.load_btn = QPushButton("Load / Replace Font")
+        self.load_btn.clicked.connect(self.load_font)
+        layout.addWidget(self.load_btn)
+
+        self.remove_btn = QPushButton("Remove Font")
+        self.remove_btn.clicked.connect(self.remove_font)
+        layout.addWidget(self.remove_btn)
+
+        self.setLayout(layout)
+
+        self.update_ui_state()
+
+    def update_ui_state(self):
+        if self.info_parent.font_exists:
+            self.status_label.setText("Custom font is currently loaded.")
+            self.remove_btn.setEnabled(True)
+        else:
+            self.status_label.setText("No custom font loaded.")
+            self.remove_btn.setEnabled(False)
+
+    def load_font(self):
+        flag = False
+
+        if self.info_parent.font_exists:
+            response = WarningDialog(
+                "A font already exists for this project. Adding a new font will remove this one. Proceed?",
+                self
+            )
+            if response.exec():
+                flag = True
+        else:
+            flag = True
+
+        if flag:
+            file_name, _ = QFileDialog.getOpenFileName(
+                self, "Add Custom Font", "", "Font Files (*.ttf *.otf)"
+            )
+
+            if file_name:
+                try:
+                    file_suffix = Path(file_name).suffix.lower()
+
+                    if file_suffix == ".ttf":
+                        dest = os.path.join(self.info_parent.app_data_dir, "font.ttf")
+                        shutil.copy(file_name, dest)
+                    elif file_suffix == ".otf":
+                        dest = os.path.join(self.info_parent.app_data_dir, "font.otf")
+                        shutil.copy(file_name, dest)
+                    else:
+                        QMessageBox.warning(self, "Error", "Font file extension not supported.")
+                        return
+                except Exception as e:
+                    QMessageBox.warning(self, "Error Loading Font", f"Could not load font file: {e}")
+                    return
+
+                result = get_font(file_name)
+
+                if isinstance(result, str):
+                    QMessageBox.warning(self, "Error", result)
+                    self.info_parent.font = None
+                    self.info_parent.font_exists = False
+                else:
+                    self.info_parent.font = result
+                    self.info_parent.font_exists = True
+                    self.info_parent.custom_font_on = True
+
+                    self.info_parent.tab_dictionary.refresh_font()
+                    self.info_parent.tab_alphabet.update_font()
+
+                self.update_ui_state()
+
+    def remove_font(self):
+        try:
+            ttf_path = os.path.join(self.info_parent.app_data_dir, "font.ttf")
+            otf_path = os.path.join(self.info_parent.app_data_dir, "font.otf")
+
+            if os.path.exists(ttf_path):
+                os.remove(ttf_path)
+            if os.path.exists(otf_path):
+                os.remove(otf_path)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error Removing Font", f"Could not remove font files: {e}")
+            return
+
+        self.info_parent.font = None
+        self.info_parent.font_exists = False
+        self.info_parent.custom_font_on = False
+
+        self.info_parent.tab_dictionary.refresh_font()
+        self.info_parent.tab_alphabet.update_font()
+
+        self.update_ui_state()
+        QMessageBox.information(self, "Success", "Custom font successfully removed.")
+
+
+class FontManagerDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.info_parent = parent
+
+        self.setWindowTitle("Font Manager")
+        self.setMinimumSize(300, 400)
+
+        layout = QVBoxLayout(self)
+        box = QGroupBox("Select Font")
+        frame = QGridLayout(box)
+
+        with open(self.info_parent.settings, "r") as f:
+            data = json.load(f)
+
+        self.font_select = QComboBox()
+        # noinspection PyTypeChecker
+        self.font_select.addItems(self.fetch_fonts())
+        self.font_select.setCurrentText(data["font"])
+        frame.addWidget(self.font_select, 0, 0)
+
+        submit = QPushButton("Select", self)
+        submit.clicked.connect(self.select_font)
+        frame.addWidget(submit, 1, 0)
+
+        layout.addWidget(box)
+
+    def fetch_fonts(self):
+        if sys.platform == "win32":
+            path = self.info_parent.path.split('\\')
+        else:
+            path = self.info_parent.path.split('/')
+
+        for _ in range(2):
+            try:
+                path.remove('src')
+            except ValueError:
+                pass
+
+        path = os.path.join(f"{'/'.join(path)}", "assets", "font")
+
+        return os.listdir(path)
+
+    def select_font(self):
+        font = self.font_select.currentText()
+
+        with open(self.info_parent.settings, "r") as f:
+            data = json.load(f)
+
+        data["font"] = font
+
+        with open(self.info_parent.settings, "w") as f:
+            json.dump(data, f, indent=4)
+
+        QMessageBox.information(self, "Success", "Font will update when you restart app.")
+
+        self.accept()
+
+    def upload_font(self):
+        flag = True
+
+        if sys.platform == "win32":
+            path = self.info_parent.path.split('\\')
+        else:
+            path = self.info_parent.path.split('/')
+            flag = False
+
+        for _ in range(2):
+            try:
+                path.remove('src')
+            except ValueError:
+                pass
+
+        path = os.path.join(f"{'/'.join(path)}", "assets", "font")
+
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, "Add Font", "", "Font Files (*.ttf *.otf)"
+        )
+
+        if file_name:
+            try:
+                file_suffix = Path(file_name).suffix.lower()
+
+                if file_suffix == ".ttf":
+                    dest = os.path.join(path, file_name.split("\\")[-1] if flag else file_name.split("/")[-1])
+                    shutil.copy(file_name, dest)
+                elif file_suffix == ".otf":
+                    dest = os.path.join(path, file_name.split("\\")[-1] if flag else file_name.split("/")[-1])
+                    shutil.copy(file_name, dest)
+                else:
+                    QMessageBox.warning(self, "Error", "Font file extension not supported.")
+                    return
+            except Exception as e:
+                QMessageBox.warning(self, "Error Loading Font", f"Could not load font file: {e}")
+                return
+
+        with open(self.info_parent.settings, "r") as f:
+            data = json.load(f)
+
+        self.font_select.clear()
+        self.font_select.addItems(self.fetch_fonts())
+        self.font_select.setCurrentText(data["font"])

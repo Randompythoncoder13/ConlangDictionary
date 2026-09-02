@@ -4,6 +4,7 @@ import csv
 import shutil
 from pathlib import Path
 import gc
+import json
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMessageBox, QFileDialog, QErrorMessage
 from PySide6.QtCore import Qt
@@ -11,7 +12,10 @@ from PySide6.QtGui import QIcon, QAction, QGuiApplication, QShortcut, QKeySequen
 
 import qdarktheme
 
-from src.dialogs import OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, WarningDialog, DebugDialog
+from src.dialogs import (
+    OpenProjectDialog, RenameProjectDialog, ImportantWarningDialog, DebugDialog, ImageManagementDialog,
+    CustomFontManagerDialog, FontManagerDialog
+)
 from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder, get_font, process_font
 from src.db_manager import DatabaseManager
 
@@ -56,7 +60,7 @@ class ConlangDictionaryApp(QMainWindow):
         except ValueError:
             pass
 
-        path = f"{'\\'.join(path)}/assets/logo.png"
+        path = f"{'/'.join(path)}/assets/logo.png"
 
         if os.path.exists(path):
             self.setWindowIcon(QIcon(path))
@@ -110,10 +114,11 @@ class ConlangDictionaryApp(QMainWindow):
             sys.exit(1)
 
     def _load_theme_mode(self):
-        self.light_dark_mode = os.path.join(self.app_data_master_dir, "dark_light_mode.txt")
+        self.settings = os.path.join(self.app_data_master_dir, "settings.json")
         try:
-            with open(self.light_dark_mode, "r") as f:
-                if f.read() == "l":
+            with open(self.settings, "r") as f:
+                data = json.load(f)
+                if data["l/d"] == "l":
                     self.set_light_mode()
                 else:
                     self.set_dark_mode()
@@ -253,9 +258,17 @@ class ConlangDictionaryApp(QMainWindow):
         set_light_mode.triggered.connect(self.set_light_mode)
         settingsMenu.addAction(set_light_mode)
 
-        import_font = QAction("Import Font", self)
+        manage_fonts = QAction("App Font", self)
+        manage_fonts.triggered.connect(self.manage_fonts)
+        settingsMenu.addAction(manage_fonts)
+
+        import_font = QAction("Manage Custom Font", self)
         import_font.triggered.connect(self.add_font_script)
         projectMenu.addAction(import_font)
+
+        manage_images = QAction("Manage Images", self)
+        manage_images.triggered.connect(self.manage_images)
+        projectMenu.addAction(manage_images)
 
         feature_request = QAction("Request a Feature", self)
         feature_request.triggered.connect(self.make_feature_request)
@@ -463,54 +476,34 @@ class ConlangDictionaryApp(QMainWindow):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         qdarktheme.setup_theme("dark", corner_shape="rounded")
 
-        with open(self.light_dark_mode, "w") as f:
-            f.write("d")
+        with open(self.settings, "r") as f:
+            data = json.load(f)
+
+        data["l/d"] = "d"
+
+        with open(self.settings, "w") as f:
+            json.dump(data, f, indent=4)
 
     def set_light_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
         qdarktheme.setup_theme("light", corner_shape="rounded")
 
-        with open(self.light_dark_mode, "w") as f:
-            f.write("l")
+        with open(self.settings, "r") as f:
+            data = json.load(f)
+
+        data["l/d"] = "l"
+
+        with open(self.settings, "w") as f:
+            json.dump(data, f, indent=4)
+
+    def manage_fonts(self):
+        FontManagerDialog(self).exec_()
 
     def add_font_script(self):
-        flag = False
+        CustomFontManagerDialog(self).exec_()
 
-        if self.font_exists:
-            response = WarningDialog(
-                "A font already exists for this project. Adding a new font will remove this one. Proceed?",
-                self
-            )
-            if response.exec():
-                flag = True
-        else:
-            flag = True
-
-        if flag:
-            file_name, _ = QFileDialog.getOpenFileName(
-                self, "Add Custom Font", "", "Font Files (*.ttf *.otf)"
-            )
-
-            if file_name:
-                try:
-                    if Path(file_name).suffix == ".ttf":
-                        shutil.copy(file_name, os.path.join(self.app_data_dir, "font.ttf"))
-                    elif Path(file_name).suffix == ".otf":
-                        shutil.copy(file_name, os.path.join(self.app_data_dir, "font.otf"))
-                    else:
-                        QMessageBox.warning(self, "Error", "Font file extension not supported.")
-                        return
-                except Exception as e:
-                    QMessageBox.warning(self, "Error Loading Font", f"Could not load font file: {e}")
-                    return
-
-                result = get_font(file_name)
-
-                if type(result) == str:
-                    QMessageBox.warning(self, "Error", result)
-                    self.font = None
-                else:
-                    self.font = result
+    def manage_images(self):
+        ImageManagementDialog(self).exec_()
 
     def make_feature_request(self):
         msg = QMessageBox(self)

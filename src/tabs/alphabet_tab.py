@@ -3,7 +3,7 @@ import json
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QLayout, QStyle, QMessageBox,
-    QProgressDialog
+    QProgressDialog, QDialog, QDialogButtonBox, QLabel
 )
 from PySide6.QtGui import QFont
 
@@ -98,6 +98,7 @@ class AlphabetTab(QWidget):
         block.move_left_sig.connect(self.move_block_left)
         block.move_right_sig.connect(self.move_block_right)
         block.delete_sig.connect(self.delete_block)
+        block.edit_sig.connect(self.edit_block)
 
         self.blocks.append(block)
         self.refresh_layout()
@@ -117,6 +118,55 @@ class AlphabetTab(QWidget):
         if idx < len(self.blocks) - 1:
             self.blocks[idx], self.blocks[idx + 1] = self.blocks[idx + 1], self.blocks[idx]
             self.refresh_layout()
+
+    def edit_block(self, block):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Letter Block")
+        layout = QVBoxLayout(dialog)
+
+        # Letter Input
+        layout_letter = QHBoxLayout()
+        layout_letter.addWidget(QLabel("Letter:"))
+        input_letter = QLineEdit()
+        input_letter.setText(block.letter)
+        layout_letter.addWidget(input_letter)
+        layout.addLayout(layout_letter)
+
+        # IPA Input
+        layout_ipa = QHBoxLayout()
+        layout_ipa.addWidget(QLabel("IPA:"))
+        input_ipa = IPALineEdit()  # Uses your custom IPALineEdit
+        input_ipa.setText(block.ipa)
+        layout_ipa.addWidget(input_ipa)
+        layout.addLayout(layout_ipa)
+
+        # Save / Cancel Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        # Process the edits if the user hits Save
+        if dialog.exec() == QDialog.Accepted:
+            new_letter = input_letter.text().strip().lower()
+            new_ipa = input_ipa.text().strip()
+
+            if not new_letter or len(new_letter) > 1:
+                QMessageBox.warning(self, "Error", "Please enter exactly one letter.")
+                return
+
+            # Check for letter duplicates, excluding the current block's existing letter
+            if new_letter != block.letter and any(b.letter == new_letter for b in self.blocks):
+                QMessageBox.warning(self, "Error", "You can't have two blocks with the same letter.")
+                return
+
+            # Update the block's attributes
+            block.letter = new_letter
+            block.ipa = new_ipa
+            block.update_display(self.custom_font_on)
+
+            # Save to backend
+            self.update_data()
 
     def delete_block(self, block):
         dialog = WarningDialog("Are you sure you wish to delete this?", self)
@@ -242,6 +292,7 @@ class AlphabetTab(QWidget):
             block.update_display(self.custom_font_on)
 
         self.refresh_layout()
+
 
 class FlowLayout(QLayout):
     def __init__(self, parent=None, margin=-1, h_spacing=-1, v_spacing=-1):

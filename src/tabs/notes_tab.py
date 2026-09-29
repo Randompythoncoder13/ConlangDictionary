@@ -21,7 +21,7 @@ TABLE_MACRO_RE = re.compile(r"\{\{table:([^}]+)\}\}")
 FONT_MACRO_RE = re.compile(r"\{\{f:([^}]+)\}\}")
 
 
-class GrammarTab(QWidget):
+class NotesTab(QWidget):
     def __init__(self, main_app):
         super().__init__()
         self.main_app = main_app

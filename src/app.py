@@ -20,7 +20,7 @@ from src.functions import zip_folder, unzip_file, get_folder_names, clear_folder
 from src.db_manager import DatabaseManager
 
 from src.tabs.dictionary_tab import DictionaryTab
-from src.tabs.grammar_tab import GrammarTab
+from src.tabs.notes_tab import NotesTab
 from src.tabs.stats_tab import StatsTab
 from src.tabs.word_gen_tab import WordGenTab
 from src.tabs.ipa_tab import IPATab
@@ -193,14 +193,14 @@ class ConlangDictionaryApp(QMainWindow):
         self.tab_alphabet = AlphabetTab(self)
         self.tab_dictionary = DictionaryTab(self)
         self.tab_word_generator = WordGenTab(self)
-        self.tab_grammar = GrammarTab(self)
+        self.tab_grammar = NotesTab(self)
         self.tab_ipa = IPATab(self)
         self.tab_stats = StatsTab(self)
         self.tab_help = HelpTab(self)
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
         self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
-        self.main_notebook.addTab(self.tab_grammar, 'Grammar Appendix')
+        self.main_notebook.addTab(self.tab_grammar, 'Notes')
         self.main_notebook.addTab(self.tab_alphabet, 'Custom Alphabet')
         self.main_notebook.addTab(self.tab_ipa, 'IPA Chart')
         self.main_notebook.addTab(self.tab_stats, 'Statistics')
@@ -250,13 +250,9 @@ class ConlangDictionaryApp(QMainWindow):
         import_zip.triggered.connect(self.import_from_zip)
         fileMenu.addAction(import_zip)
 
-        set_dark_mode = QAction("Dark Mode", self)
-        set_dark_mode.triggered.connect(self.set_dark_mode)
+        set_dark_mode = QAction("Light/Dark Mode", self)
+        set_dark_mode.triggered.connect(self.toggle_light_dark_mode)
         settingsMenu.addAction(set_dark_mode)
-
-        set_light_mode = QAction("Light Mode", self)
-        set_light_mode.triggered.connect(self.set_light_mode)
-        settingsMenu.addAction(set_light_mode)
 
         manage_fonts = QAction("App Font", self)
         manage_fonts.triggered.connect(self.manage_fonts)
@@ -476,22 +472,20 @@ class ConlangDictionaryApp(QMainWindow):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         qdarktheme.setup_theme("dark", corner_shape="rounded")
 
-        with open(self.settings, "r") as f:
-            data = json.load(f)
-
-        data["l/d"] = "d"
-
-        with open(self.settings, "w") as f:
-            json.dump(data, f, indent=4)
-
     def set_light_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
         qdarktheme.setup_theme("light", corner_shape="rounded")
 
+    def toggle_light_dark_mode(self):
         with open(self.settings, "r") as f:
             data = json.load(f)
 
-        data["l/d"] = "l"
+        if data["l/d"] == "d":
+            self.set_light_mode()
+            data["l/d"] = "l"
+        else:
+            self.set_dark_mode()
+            data["l/d"] = "d"
 
         with open(self.settings, "w") as f:
             json.dump(data, f, indent=4)

@@ -130,3 +130,7 @@ Your conlang projects are stored locally on your computer in your user's applica
 + Linux: `/home/<YourUser>/.local/share/ConlangDictionary`
 
 Each project you create will be a subfolder in this location. The app uses a localized SQLite database (project.db) to efficiently store your dictionary, grammar tables, tags, and presets. Note: Older JSON-based projects are automatically backed up and migrated to this new database format upon opening. Your custom fonts and theme preferences are also saved directly in your project's directory.
+
+### AI Usage Disclosure
+
+For the purpose of transparency, I do want to state that generative AI is used in this project to an extent. That is not to say that this app is vibe coded. It is not at all. AI is used for basic prototypes, tracking down bugs, and complex refactoring that would take me ages but that AI can accomplish very quickly. I do not use any agentic environments like  EVERY single line of generated code is reviewed by me and most if not all generated code goes through multiple stages of manual edits to tweak things to just the way I want it. If this is still an issue for you, please keep in mind that I'm one guy building this for fun more than anything. AI is a tool to be used but to augment the development process not replace the human element.

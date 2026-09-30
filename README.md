@@ -7,13 +7,13 @@ This application provides a comprehensive suite of tools for conlang development
 1. Dictionary Tab
    + Word Management: Add, edit, and delete words with detailed information.
    + Rich Word Entries: Each entry includes:
-     + The conlang word
-     + One or more English translations (separated by commas)
-     + Syllabication
-     + IPA Pronunciation
-     + Part of Speech (customizable)
-     + A description/definition field
-     + Tags (customizable)
+     + The conlang word.
+     + One or more English translations (separated by commas).
+     + Syllabication.
+     + IPA Pronunciation.
+     + Part of Speech (customizable).
+     + A description/definition field.
+     + Tags (customizable).
    + Etymology Tracking: Link words together by defining "Root" (words this word comes from) and "Derived" (words that come from this word) relationships. You can double-click a linked word to jump to it.
    + Lexical Relations: Link words to their Synonyms and Antonyms for quick reference.
    + Powerful Search & Filtering: Search for words in either your conlang or in English, and filter the dictionary view by Part of Speech, tags, or both.
@@ -21,18 +21,20 @@ This application provides a comprehensive suite of tools for conlang development
 
 
 2. Word Generator Tab
-   + Kozuka-Based: Uses logic inspired by the [Kozuka](https://kozuka.kmwc.org/) word generator to create words based on custom letter/sound patterns.
-   + Save/Load Presets: Save your generator patterns as a named preset and reload them later.
+   + Kozuka-Based: Uses logic inspired by the [Kozuka](https://kozuka.kmwc.org/) word generator to create words based on customizable pattern rows and a main pattern.
+   + Save/Load/Delete Presets: Save your generator patterns as a named preset, load them from a dropdown menu, or delete them when no longer needed.
    + Quick Add: Double-click any word in the generated list to open the "Add Word" dialog with it pre-filled.
 
 
-3. Grammar Appendix Tab
-   + Grammar Rules: A dedicated rich text editor for your main grammar documentation (e.g., phonology, syntax, morphology). Requires manual save.
-   + Grammar Tables: Create and manage multiple tables for things like noun declensions, verb conjugations, or affix lists. The table editor supports adding/removing rows and columns and editing headers. Requires manual save.
+3. Notes Tab
+   + Chapters: A dedicated editor for your main grammar documentation (e.g., phonology, syntax, morphology) featuring a live Markdown preview alongside the rich text editor. All chapters autosave continuously as you type.
+   + Rich Formatting Tools: Use built-in tools to insert images (via file browser or clipboard paste), use the integrated Gloss Builder, insert special characters with the IPA picker, and wrap text in custom conlang fonts using macros.
+   + Grammar Tables: Create and manage multiple tables for things like noun declensions, verb conjugations, or affix lists. The table editor supports adding/removing rows and columns, editing horizontal and vertical headers, importing from CSV, and exporting to CSV or Markdown. Tables also save automatically upon editing.
+   + Embedded Elements: Insert created grammar tables directly into your text chapters using an embed macro.
 
 
 4. Custom Alphabet Tab
-   + Define Letters: Input single characters for your alphabet and assign default IPA pronunciations.
+   + Define & Edit Letters: Input single characters for your alphabet and assign default IPA pronunciations, and easily update existing letter blocks through the edit dialog.
    + Custom Sorting Order: Arrange letter blocks left-to-right to directly control how words are sorted alphabetically in the Dictionary Tab.
    + Populating IPA: Automatically generate pronunciations for dictionary words with blank IPA fields based on your defined letter-to-IPA mapping (this safely preserves any manually entered pronunciations).
    + Display Options: Toggle your imported custom conlang font to display your alphabet blocks.
@@ -46,11 +48,11 @@ This application provides a comprehensive suite of tools for conlang development
 
 6. Statistics Tab
    + At-a-Glance Info: Get a quick overview of your dictionary, including:
-     + Total word count
-     + Number of root words (no etymological parents)
-     + Number of terminal words (no etymological children)
-     + Word counts by Part of Speech
-     + Word counts by tag
+     + Total word count.
+     + Number of root words (no etymological parents).
+     + Number of terminal words (no etymological children).
+     + Word counts by Part of Speech.
+     + Word counts by tag.
 
 
 7. How To Use / Help Tab
@@ -60,16 +62,17 @@ This application provides a comprehensive suite of tools for conlang development
 File Menu
   + Multi-Project Support: Create and switch between multiple conlang projects. Each project is stored in its own folder.
   + Project Operations: Easily rename or delete the current project.
-  + Import/Export: Back up your entire project (dictionary, grammar, tags) to a .zip file, or import a project from a .zip file.
-  + CSV Export: Export your dictionary list to a .csv file for use in other applications.
+  + Import/Export: Back up your entire project (dictionary, grammar, tags) to a.zip file, or import a project from a.zip file.
+  + CSV Export: Export your dictionary list to a.csv file for use in other applications.
 
 Project
-  + Custom Fonts: Import .ttf or .otf font files to render your custom conlang script dynamically throughout the application.
+  + Custom Fonts: Import.ttf or.otf font files to render your custom conlang script dynamically throughout the application.
 
 Support & Feedback Menu
   + Request a Feature: Link to a [Google Form](https://forms.gle/Tbcp4ZTEdrRSxUwF9) where you can request a new feature.
   + Report a Bug: Link to a [Google Form](https://forms.gle/VxbFc5RZt55Q69a36) where you can report a bug.
   + Support Project on Ko-Fi: [Link](https://ko-fi.com/mastercheese129) to give a small donation to the project.
+
 
 ### How to Run
 
@@ -102,7 +105,7 @@ Running the Application
 |   |-- /tabs
 |       |-- alphabet_tab.py
 |       |-- dictionary_tab.py
-|       |-- grammar_tab.py
+|       |-- notes_tab.py
 |       |-- help_tab.py
 |       |-- ipa_tab.py
 |       |-- stats_tab.py
@@ -112,12 +115,15 @@ Running the Application
     |-- logo.png
     |-- /font
     |   |-- Charis-Regular.ttf
+    |   |-- NotoSansMono-Regular.ttf
     |
     |-- /ipa_sounds
-        |-- !.mp3
-        |-- a.mp3
-        |-- b.mp3
-        |-- ...
+    |   |-- !.mp3
+    |   |-- a.mp3
+    |   |-- b.mp3
+    |   |--...
+    |
+    |-- /imported_images
 ```
 
 Execute: Run the main.py script from your terminal:
@@ -130,3 +136,7 @@ Your conlang projects are stored locally on your computer in your user's applica
 + Linux: `/home/<YourUser>/.local/share/ConlangDictionary`
 
 Each project you create will be a subfolder in this location. The app uses a localized SQLite database (project.db) to efficiently store your dictionary, grammar tables, tags, and presets. Note: Older JSON-based projects are automatically backed up and migrated to this new database format upon opening. Your custom fonts and theme preferences are also saved directly in your project's directory.
+
+### AI Usage Disclosure
+
+For the purpose of transparency, I do want to state that generative AI is used in this project to an extent. That is not to say that this app is vibe coded. It is not at all. AI is used for basic prototypes, tracking down bugs, and complex refactoring that would take me ages but that AI can accomplish very quickly. I do not use any agentic environments like EVERY single line of generated code is reviewed by me and most if not all generated code goes through multiple stages of manual edits to tweak things to just the way I want it. If this is still an issue for you, please keep in mind that I'm one guy building this for fun more than anything. AI is a tool to be used but to augment the development process not replace the human element.

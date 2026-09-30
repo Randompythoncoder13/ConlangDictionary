@@ -76,6 +76,7 @@ class WordGenTab(QWidget):
         gen_layout.addWidget(self.num_words_input, 0, 1)
 
         generate_button = QPushButton(QIcon.fromTheme("view-refresh"), "Generate")
+        generate_button.setFixedWidth(250)
         generate_button.clicked.connect(self.generate_output)
         gen_layout.addWidget(generate_button, 3, 0, 1, 2)
 
@@ -99,7 +100,12 @@ class WordGenTab(QWidget):
         load_pattern_button.clicked.connect(self.load_pattern)
         gen_layout.addWidget(load_pattern_button, 3, 3, 1, 2)
 
-        gen_layout.setColumnStretch(2, 1)
+        delete_pattern_button = QPushButton("Delete Pattern")
+        delete_pattern_button.setFixedWidth(120)
+        delete_pattern_button.clicked.connect(self.delete_pattern)
+        gen_layout.addWidget(delete_pattern_button, 0, 4, 1, 1)
+
+        gen_layout.setColumnStretch(5, 1)
 
         controls_layout.addWidget(gen_box, 1)
 
@@ -268,6 +274,19 @@ class WordGenTab(QWidget):
                     self.add_pattern_row(name, pattern)
                 except IndexError:
                     QMessageBox.warning(self, "Load Error", f"Warning: Could not load pattern_dict: {pattern_dict}")
+
+    def delete_pattern(self):
+        name = self.pattern_load_box.currentText()
+
+        for present in self.main_app.presents:
+            if present["name"] == name:
+                self.main_app.presents.remove(present)
+                break
+
+        self.pattern_load_box.clear()
+        self.pattern_load_box.addItems([name["name"] for name in self.main_app.presents])
+
+        self.main_app.save_presents()
 
     def show_error(self, message):
         """Displays an error message in the error label."""

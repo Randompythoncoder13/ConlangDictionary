@@ -3,9 +3,9 @@ import sys
 
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QWidget, QLabel, QHBoxLayout, QStyle, QToolButton, QListWidget, QSizePolicy,
-    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea, QComboBox
+    QApplication, QLineEdit, QPushButton, QVBoxLayout, QGridLayout, QScrollArea, QComboBox, QTextEdit
 )
-from PySide6.QtGui import QFont, QColor, QPalette, QMouseEvent, QFontMetrics, QStandardItemModel, QStandardItem
+from PySide6.QtGui import QFont, QColor, QPalette, QMouseEvent, QFontMetrics, QStandardItemModel, QStandardItem, QIcon
 from PySide6.QtCore import Qt, QSize, Signal, QPoint, QEvent, QRect
 
 import pyperclip
@@ -380,12 +380,12 @@ class LetterBlock(QWidget):
     move_left_sig = Signal(QWidget)
     move_right_sig = Signal(QWidget)
     delete_sig = Signal(QWidget)
+    edit_sig = Signal(QWidget)
 
     def __init__(self, letter, ipa, custom_font_family=None):
         super().__init__()
         self.letter = letter.lower()
         self.ipa = ipa
-
         self.custom_font = custom_font_family
 
         self.init_ui()
@@ -404,17 +404,23 @@ class LetterBlock(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(5, 5, 5, 5)
 
-        # --- Top Layout: Delete Button ---
         top_layout = QHBoxLayout()
+
+        self.btn_edit = QPushButton()
+        self.btn_edit.setText("Edit")
+        self.btn_edit.setFixedSize(50, 30)
+        self.btn_edit.clicked.connect(lambda: self.edit_sig.emit(self))
+
         self.btn_delete = QPushButton("✕")
-        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setFixedSize(30, 30)
         self.btn_delete.setStyleSheet("border: none; color: #ff4444; font-weight: bold;")
         self.btn_delete.clicked.connect(lambda: self.delete_sig.emit(self))
+
+        top_layout.addWidget(self.btn_edit)
         top_layout.addStretch()
         top_layout.addWidget(self.btn_delete)
         main_layout.addLayout(top_layout)
 
-        # --- Middle Layout: Upper and Lower Case Letters ---
         letters_layout = QHBoxLayout()
 
         self.lbl_big_upper = QLabel()
@@ -427,7 +433,6 @@ class LetterBlock(QWidget):
         letters_layout.addWidget(self.lbl_big_lower)
         main_layout.addLayout(letters_layout)
 
-        # --- Middle Layout: Small IPA Label ---
         self.lbl_small = QLabel()
         self.lbl_small.setAlignment(Qt.AlignCenter)
         self.lbl_small.setStyleSheet("color: gray;")
@@ -435,7 +440,6 @@ class LetterBlock(QWidget):
 
         main_layout.addStretch()
 
-        # --- Bottom Layout: Navigation Arrows ---
         bottom_layout = QHBoxLayout()
         self.btn_left = QPushButton("◀")
         self.btn_right = QPushButton("▶")
@@ -453,23 +457,22 @@ class LetterBlock(QWidget):
         self.update_display(False)
 
     def update_display(self, use_custom_font):
-        # Determine which font to use
         font = self.custom_font if use_custom_font else QApplication.font()
         font.setPointSize(24)
 
-        # Apply font to both big labels
         self.lbl_big_upper.setFont(font)
         self.lbl_big_lower.setFont(font)
 
-        # Force uppercase for the left label, lowercase for the right label
         self.lbl_big_upper.setText(self.letter.upper())
         self.lbl_big_lower.setText(self.letter.lower())
 
-        # Update the IPA label
         if use_custom_font:
             self.lbl_small.setText(f"{self.letter.upper()} /{self.ipa}/")
         else:
             self.lbl_small.setText(f"/{self.ipa}/")
+
+    def change_font(self, font):
+        self.custom_font = font
 
 
 class ConlangTableWidgetItem(QTableWidgetItem):
@@ -567,3 +570,25 @@ class MultiSelectComboBox(QComboBox):
                 item.setCheckState(Qt.CheckState.Unchecked)
 
         self._update_display_text()
+
+
+class GrammarEditor(QTextEdit):
+    """Plain-text Markdown editor. Intercepts image paste from the clipboard
+    and forces plain-text paste for regular text (so rich text/HTML from
+    other apps doesn't pollute the Markdown source)."""
+
+    def __init__(self, tab, parent=None):
+        super().__init__(parent)
+        self.tab = tab
+        self.setAcceptRichText(False)
+
+    def insertFromMimeData(self, source):
+        if source.hasImage():
+            self.tab.handle_clipboard_image(source)
+            return
+
+        if source.hasText():
+            self.insertPlainText(source.text())
+            return
+
+        super().insertFromMimeData(source)

@@ -14,9 +14,10 @@ class HelpTab(QWidget):
         help_text_widget.setText(help_text)
 
 
-help_text = """Welcome to the Conlang Dictionary Builder!
+help_text = """Welcome to Conlang Dictionary!
 
 This application helps you create, manage, and explore your constructed language. Here's a quick guide to its features.
+
 
 == Menu Bar ==
 
@@ -39,6 +40,7 @@ This application helps you create, manage, and explore your constructed language
     - Request a Feature: Link to a Google Form where you can request a new feature.
     - Report a Bug: Link to a Google Form where you can report a bug.
     - Support Project on Ko-Fi: Give a small donation to the project.
+
 
 == Dictionary Tab ==
 
@@ -69,25 +71,35 @@ This application helps you create, manage, and explore your constructed language
     - Antonyms: Words with opposite meanings.
     - Double-click a word in the lists to jump to it in the main dictionary.
 
+
 == Word Generator Tab ==
 
 * Generate Random Words:
     - This generator is based on a site called Kozuka (creator: https://github.com/auctumnus). It follows the same rules and they already made a very good page explaining them so view rules here: https://kozuka.kmwc.org/help.html
     - Using Output: Double-click on one of the generated words to automatically open the Add Word window with it autofilled.
-    - Save/Load Pattern: Save your generator configurations (main pattern and rules) as presets to easily reuse them later.
+    - Managing Patterns: Use "+ Add pattern" and "- Remove" to add or remove pattern rules dynamically. You can also specify the "Number of words" to generate.
+    - Save/Load/Delete Pattern: Save your generator configurations (main pattern and rules) as presets to easily reuse them later, load existing ones, or delete presets you no longer need.
 
-== Grammar Appendix Tab ==
+
+== Grammar Appendix / Notes Tab ==
 
 This tab is for your language's documentation.
 
-* Grammar Rules: A single text box for your general notes.
-    - IMPORTANT: You must click the "Save Rules" button to save your changes.
+* Chapters (Grammar Rules):
+    - Create multiple separate chapters for your grammar notes using the "Add", "Rename", and "Delete" buttons.
+    - Use the rich text editor toolbar to format headings, bold/italic text, lists, and apply your custom conlang font.
+    - Insert IPA characters via a popup picker, insert images, and use the Gloss Builder.
+    - Chapters autosave automatically after you stop typing, but you can also click the "Save Chapter Now" button.
+
 
 * Grammar Tables: A place to store multiple, separate tables.
     - Create Table: Prompts you for a name and size and creates a new, blank table.
     - Delete Table: Deletes the selected table.
     - Add/Remove Row/Column: Use the editor buttons to resize the table. Double-click headers to edit them.
-    - IMPORTANT: You must click "Save Current Table" to save your changes to the selected table.
+    - Import/Export: Export tables as CSV or Markdown (.md), or import existing CSV data into a table.
+    - Embed in Chapters: Click "Insert into Chapter" to embed a selected table into your current chapter text (using a macro like `{{table:name}}`).
+    - Tables automatically save as you edit them, but you can also click "Save Current Table".
+
 
 == Custom Alphabet Tab ==
 
@@ -101,16 +113,16 @@ This tab allows you to define the specific letters of your conlang, set their de
 * Managing Your Alphabet:
     - Custom Sorting: The left-to-right sequence of your letter blocks directly controls how words are sorted alphabetically in the Dictionary Tab.
     - Moving Blocks: Use the left (◀) and right (▶) arrow buttons at the bottom of each block to change their order.
+    - Editing Blocks: You can edit an existing letter block to change its assigned letter or IPA symbol.
     - Deleting Blocks: Click the red "✕" in the top-right corner of a block to remove it from your alphabet.
-
 
 * Populating IPA:
     - Click the "Populate Empty IPA Fields" button to automatically generate pronunciations for your dictionary words based on the letter-to-IPA mapping you defined in this tab.
     - This tool will only fill in blank IPA fields. Any pronunciations you have manually entered in your dictionary will be completely safe and left as-is.
 
-
 * Display Options:
     - Click "Toggle Custom Font" to switch the letter blocks between your default system font and your imported custom conlang font.
+
 
 == IPA Chart Tab ==
 
@@ -118,8 +130,9 @@ This tab allows you to define the specific letters of your conlang, set their de
     - Click any IPA symbol to automatically copy it to your clipboard.
     - Click the play button next to a symbol to play its audio.
 
+
 == Saving Your Data ==
 
 * Database Storage: Your dictionary, tags, grammar rules, tables, and word generator presets are automatically managed and saved to a local SQLite database file named "project.db" within your project's folder. (Note: Old JSON projects are automatically migrated to this database upon opening if updating from an older version).
 * Dictionary & Tags: Changes to your dictionary entries and tags are saved to the database immediately.
-* Grammar: Grammar rules and tables are saved to the database ONLY when you click the "Save Rules" or "Save Current Table" buttons."""
+* Grammar: Chapters and tables are automatically saved shortly after you stop typing or modifying them. You can also use the manual save buttons."""

@@ -2,6 +2,9 @@ import shutil
 import zipfile
 import os
 import sys
+import json
+import uuid
+
 from PySide6.QtGui import QFontDatabase, QFont
 
 
@@ -119,3 +122,35 @@ def get_correct_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+
+def load_sections(main_app):
+    """Load structured chapters from grammar_data['rules'], migrating legacy
+    plain-text rules into a single 'General' chapter on first read."""
+
+    raw = main_app.grammar_data.get('rules', '')
+
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                sections = parsed.get('sections')
+                if isinstance(sections, list) and sections:
+                    clean = []
+                    for s in sections:
+                        if isinstance(s, dict) and 'title' in s:
+                            clean.append({
+                                "id": s.get("id") or str(uuid.uuid4()),
+                                "title": s["title"],
+                                "content": s.get("content", "")
+                            })
+
+                    if clean:
+                        return clean
+
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    legacy_text = raw if isinstance(raw, str) else ""
+
+    return [{"id": str(uuid.uuid4()), "title": "General", "content": legacy_text}]

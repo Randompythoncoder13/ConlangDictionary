@@ -407,10 +407,8 @@ class LetterBlock(QWidget):
         top_layout = QHBoxLayout()
 
         self.btn_edit = QPushButton()
-        edit_icon = QIcon.fromTheme("document-edit")
-        self.btn_edit.setIcon(edit_icon)
-        self.btn_edit.setFixedSize(30, 30)
-        self.btn_edit.setStyleSheet("border: none; color: #5555ff; font-weight: bold;")
+        self.btn_edit.setText("Edit")
+        self.btn_edit.setFixedSize(50, 30)
         self.btn_edit.clicked.connect(lambda: self.edit_sig.emit(self))
 
         self.btn_delete = QPushButton("✕")

@@ -87,7 +87,7 @@ This tab is for your language's documentation.
 
 * Chapters (Grammar Rules):
     - Create multiple separate chapters for your grammar notes using the "Add", "Rename", and "Delete" buttons.
-    - Use the rich text editor toolbar to format headings, bold/italic text, lists, and apply your custom conlang font.
+    - Use the text editor toolbar to format headings, bold/italic text, lists, and more.
     - Insert IPA characters via a popup picker, insert images, and use the Gloss Builder.
     - Chapters autosave automatically after you stop typing, but you can also click the "Save Chapter Now" button.
 

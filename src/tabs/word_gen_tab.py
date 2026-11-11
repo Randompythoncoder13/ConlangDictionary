@@ -101,7 +101,7 @@ class WordGenTab(QWidget):
         gen_layout.addWidget(load_pattern_button, 3, 3, 1, 2)
 
         delete_pattern_button = QPushButton("Delete Pattern")
-        delete_pattern_button.setFixedWidth(120)
+        # delete_pattern_button.setFixedWidth(120)
         delete_pattern_button.clicked.connect(self.delete_pattern)
         gen_layout.addWidget(delete_pattern_button, 0, 4, 1, 1)
 

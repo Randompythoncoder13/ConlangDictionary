@@ -3,28 +3,126 @@ import re
 import csv
 import json
 import uuid
+import html
 import shutil
 import sys
+import markdown
+import base64
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QTextBrowser, QPushButton, QToolButton, QListWidget,
-    QTableWidget, QTableWidgetItem, QMessageBox, QInputDialog, QSplitter, QDialog, QFileDialog, QMenu, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QTextBrowser,
+    QPushButton, QToolButton, QListWidget, QTableWidget, QTableWidgetItem,
+    QMessageBox, QInputDialog, QSplitter, QDialog, QFileDialog, QMenu,
+    QApplication, QLineEdit, QFrame, QButtonGroup
 )
-from PySide6.QtGui import QTextCursor, QFont, QAction, QImage
+from PySide6.QtGui import (
+    QTextCursor, QFont, QAction, QImage, QSyntaxHighlighter,
+    QTextCharFormat, QColor, QKeySequence, QShortcut
+)
 from PySide6.QtCore import Qt, QTimer, QPoint, QRect, QEvent, QUrl
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from src.custom_widgets import IPAPickerPopup, GrammarEditor
 from src.dialogs import GlossDialog
 from src.functions import load_sections
 
+# --- Regex Patterns for ConlangMark ---
 TABLE_MACRO_RE = re.compile(r"\{\{table:([^}]+)\}\}")
 FONT_MACRO_RE = re.compile(r"\{\{f:([^}]+)\}\}")
+IPA_MACRO_RE = re.compile(r"\{\{ipa:([^}]+)\}\}")
+SC_MACRO_RE = re.compile(r"\{\{sc:([^}]+)\}\}")
+RULE_MACRO_RE = re.compile(r"\{\{rule:([^}]+)\}\}")
+
+GLOSS_BLOCK_RE = re.compile(
+    r"^:::\s*gloss(?:\s+([^\n]*))?\n(.*?)\n^:::\s*$",
+    re.MULTILINE | re.DOTALL
+)
+CALLOUT_BLOCK_RE = re.compile(
+    r"^:::\s*(note|example|rule|warning)(?:\s+([^\n]*))?\n(.*?)\n^:::\s*$",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE
+)
+GRAMMAR_TAG_RE = re.compile(r"\b([123]?(?:SG|PL|DU)|[A-Z]{2,6})\b")
+
+
+class ConlangMarkupHighlighter(QSyntaxHighlighter):
+    """Lightweight syntax highlighter for Markdown + ConlangMark macros."""
+
+    def __init__(self, document, is_dark=False):
+        super().__init__(document)
+        self.is_dark = is_dark
+        self._rebuild_rules()
+
+    def set_theme(self, is_dark: bool):
+        self.is_dark = is_dark
+        self._rebuild_rules()
+        self.rehighlight()
+
+    def _rebuild_rules(self):
+        self.rules = []
+
+        if self.is_dark:
+            c_heading = "#58a6ff"
+            c_macro = "#d2a8ff"
+            c_block = "#ffa657"
+            c_bold = "#f0f6fc"
+            c_italic = "#a5d6ff"
+            c_quote = "#8b949e"
+        else:
+            c_heading = "#0969da"
+            c_macro = "#8250df"
+            c_block = "#bc4c00"
+            c_bold = "#1f2328"
+            c_italic = "#0550ae"
+            c_quote = "#57606a"
+
+        # Headings
+        h_fmt = QTextCharFormat()
+        h_fmt.setForeground(QColor(c_heading))
+        h_fmt.setFontWeight(QFont.Weight.Bold)
+        self.rules.append((re.compile(r"^#{1,6}\s.*$"), h_fmt))
+
+        # Bold
+        b_fmt = QTextCharFormat()
+        b_fmt.setForeground(QColor(c_bold))
+        b_fmt.setFontWeight(QFont.Weight.Bold)
+        self.rules.append((re.compile(r"\*\*[^*]+\*\*"), b_fmt))
+
+        # Italic
+        i_fmt = QTextCharFormat()
+        i_fmt.setForeground(QColor(c_italic))
+        i_fmt.setFontItalic(True)
+        self.rules.append((re.compile(r"(?<!\*)\*[^*\n]+\*(?!\*)"), i_fmt))
+
+        # Macros: {{f:...}}, {{table:...}}, {{ipa:...}}, {{sc:...}}, {{rule:...}}
+        m_fmt = QTextCharFormat()
+        m_fmt.setForeground(QColor(c_macro))
+        m_fmt.setFontWeight(QFont.Weight.DemiBold)
+        self.rules.append((re.compile(r"\{\{[a-zA-Z]+:[^}]+\}\}"), m_fmt))
+
+        # Fencing: ::: gloss / ::: note / :::
+        blk_fmt = QTextCharFormat()
+        blk_fmt.setForeground(QColor(c_block))
+        blk_fmt.setFontWeight(QFont.Weight.Bold)
+        self.rules.append((re.compile(r"^:::.*$"), blk_fmt))
+
+        # Blockquotes
+        q_fmt = QTextCharFormat()
+        q_fmt.setForeground(QColor(c_quote))
+        q_fmt.setFontItalic(True)
+        self.rules.append((re.compile(r"^>\s.*$"), q_fmt))
+
+    def highlightBlock(self, text):
+        for pattern, fmt in self.rules:
+            for match in pattern.finditer(text):
+                start, end = match.span()
+                self.setFormat(start, end - start, fmt)
 
 
 class NotesTab(QWidget):
     def __init__(self, main_app):
         super().__init__()
         self.main_app = main_app
+        self.is_dark_mode = getattr(main_app, "is_dark_mode", False)
 
         self._loading = False
         self._loading_table = False
@@ -33,7 +131,7 @@ class NotesTab(QWidget):
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
-        self.autosave_timer.setInterval(1200)
+        self.autosave_timer.setInterval(1000)
         self.autosave_timer.timeout.connect(self._autosave_rules)
 
         self.table_autosave_timer = QTimer(self)
@@ -42,145 +140,375 @@ class NotesTab(QWidget):
         self.table_autosave_timer.timeout.connect(self._autosave_current_table)
 
         self._build_ui()
+        self._setup_shortcuts()
         self._populate_section_list()
         self.update_grammar_table_listbox()
 
+    # =========================================================================
+    # UI CONSTRUCTION
+    # =========================================================================
+
     def _build_ui(self):
         outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(8, 8, 8, 8)
+        outer_layout.setSpacing(6)
+
         main_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        main_splitter.setHandleWidth(6)
         outer_layout.addWidget(main_splitter)
 
         main_splitter.addWidget(self._build_editor_frame())
         main_splitter.addWidget(self._build_tables_pane())
-        main_splitter.setSizes([500, 350])
+        main_splitter.setSizes([560, 300])
 
         self._init_ipa_picker()
 
     def _build_editor_frame(self):
         editor_frame = QWidget()
         editor_h_layout = QHBoxLayout(editor_frame)
+        editor_h_layout.setContentsMargins(0, 0, 0, 0)
+        editor_h_layout.setSpacing(10)
 
         sections_pane = self._build_sections_pane()
-        sections_pane.setMaximumWidth(220)
+        sections_pane.setMinimumWidth(210)
+        sections_pane.setMaximumWidth(260)
         editor_h_layout.addWidget(sections_pane)
 
-        editor_pane = QWidget()
+        editor_pane = QFrame()
+        editor_pane.setObjectName("NotesWorkspaceFrame")
         editor_v_layout = QVBoxLayout(editor_pane)
-        editor_v_layout.addLayout(self._build_toolbar())
+        editor_v_layout.setContentsMargins(0, 0, 0, 0)
+        editor_v_layout.setSpacing(6)
 
-        editor_splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Top Toolbar
+        editor_v_layout.addWidget(self._build_toolbar())
+
+        # Main Editor / Preview Splitter
+        self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.editor_splitter.setHandleWidth(6)
 
         self.editor = GrammarEditor(self)
-        self.editor.setStyleSheet("QTextEdit { background-color: palette(base); }")
+        self.editor.setPlaceholderText(
+            "Write chapter notes here...\n"
+            "Tip: Use {{f:word}} for conlang script, {{table:Name}} for tables, "
+            "or click 'Gloss Block' / 'Callout' in the toolbar."
+        )
+        self.editor.setStyleSheet("""
+            QTextEdit {
+                background-color: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+                padding: 10px;
+                font-family: "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.5;
+            }
+        """)
+        self.highlighter = ConlangMarkupHighlighter(self.editor.document(), self.is_dark_mode)
         self.editor.textChanged.connect(self._on_editor_text_changed)
 
-        self.preview = QTextBrowser()
-        self.preview.setStyleSheet("QTextBrowser { background-color: palette(base); }")
-        self.preview.setOpenExternalLinks(True)
-        images_dir = self._ensure_image_dir()
-        self.preview.document().setBaseUrl(QUrl.fromLocalFile(images_dir + os.sep))
+        self.preview = QWebEngineView()
+        self.preview.setStyleSheet("background-color: palette(base); border-radius: 6px;")
 
-        editor_splitter.addWidget(self.editor)
-        editor_splitter.addWidget(self.preview)
-        editor_splitter.setSizes([420, 420])
+        self.editor_splitter.addWidget(self.editor)
+        self.editor_splitter.addWidget(self.preview)
+        self.editor_splitter.setSizes([450, 450])
 
-        editor_v_layout.addWidget(editor_splitter)
+        editor_v_layout.addWidget(self.editor_splitter, 1)
 
-        save_row = QHBoxLayout()
-        save_row.addStretch()
-        save_now_btn = QPushButton("Save Chapter Now")
-        save_now_btn.clicked.connect(self.save_grammar_rules)
-        save_row.addWidget(save_now_btn)
-        editor_v_layout.addLayout(save_row)
+        # Sleek Status & Action Footer
+        editor_v_layout.addWidget(self._build_status_bar())
 
         editor_h_layout.addWidget(editor_pane, 1)
-
         return editor_frame
 
     def _build_sections_pane(self):
         frame = QGroupBox("Chapters")
         layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 10, 8, 8)
+        layout.setSpacing(6)
+
+        # Quick Chapter Filter
+        self.chapter_search = QLineEdit()
+        self.chapter_search.setPlaceholderText("Filter chapters...")
+        self.chapter_search.setClearButtonEnabled(True)
+        self.chapter_search.textChanged.connect(self._filter_section_list)
+        layout.addWidget(self.chapter_search)
 
         self.section_list = QListWidget()
+        self.section_list.setAlternatingRowColors(False)
+        self.section_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid palette(mid);
+                border-radius: 5px;
+                padding: 4px;
+            }
+            QListWidget::item {
+                padding: 6px 8px;
+                border-radius: 4px;
+            }
+            QListWidget::item:selected {
+                font-weight: bold;
+            }
+        """)
         self.section_list.currentRowChanged.connect(self._on_section_selected)
-        layout.addWidget(self.section_list)
+        layout.addWidget(self.section_list, 1)
 
-        btn_row = QHBoxLayout()
-        add_btn = QPushButton("Add")
+        # Primary Chapter Actions
+        btn_row_top = QHBoxLayout()
+        btn_row_top.setSpacing(4)
+
+        add_btn = QPushButton("+ New")
+        add_btn.setToolTip("Create a new grammar chapter")
         add_btn.clicked.connect(self._add_section)
+
         rename_btn = QPushButton("Rename")
+        rename_btn.setToolTip("Rename the selected chapter")
         rename_btn.clicked.connect(self._rename_section)
+
         delete_btn = QPushButton("Delete")
+        delete_btn.setToolTip("Delete the selected chapter")
         delete_btn.clicked.connect(self._delete_section)
 
         for b in (add_btn, rename_btn, delete_btn):
-            btn_row.addWidget(b)
+            btn_row_top.addWidget(b)
+        layout.addLayout(btn_row_top)
 
-        layout.addLayout(btn_row)
+        # Reorder Row
+        btn_row_order = QHBoxLayout()
+        btn_row_order.setSpacing(4)
+
+        move_up_btn = QPushButton("↑ Move Up")
+        move_up_btn.setToolTip("Move chapter up")
+        move_up_btn.clicked.connect(lambda: self._move_section(-1))
+
+        move_down_btn = QPushButton("↓ Move Down")
+        move_down_btn.setToolTip("Move chapter down")
+        move_down_btn.clicked.connect(lambda: self._move_section(1))
+
+        btn_row_order.addWidget(move_up_btn)
+        btn_row_order.addWidget(move_down_btn)
+        layout.addLayout(btn_row_order)
 
         return frame
 
     def _build_toolbar(self):
-        layout = QHBoxLayout()
+        bar = QFrame()
+        bar.setStyleSheet("""
+            QFrame {
+                background-color: palette(window);
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+            }
+            QPushButton, QToolButton {
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+        """)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(4)
 
+        # --- Group 1: Text & Structure ---
         heading_btn = QToolButton()
-        heading_btn.setText("Heading ")
+        heading_btn.setText("Heading ▾")
         heading_menu = QMenu(heading_btn)
-
-        for level in (1, 2, 3):
-            action = QAction(f"Heading {level}", self)
+        for level, desc in ((1, "H1 — Chapter Section"), (2, "H2 — Sub-section"), (3, "H3 — Topic")):
+            action = QAction(desc, self)
             action.triggered.connect(lambda checked=False, lvl=level: self._insert_heading(lvl))
             heading_menu.addAction(action)
-
         heading_btn.setMenu(heading_menu)
         heading_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         layout.addWidget(heading_btn)
 
         bold_btn = QPushButton("B")
+        bold_btn.setToolTip("Bold (Ctrl+B)")
         bold_font = QFont()
         bold_font.setBold(True)
         bold_btn.setFont(bold_font)
-        bold_btn.setFixedWidth(32)
+        bold_btn.setFixedWidth(28)
         bold_btn.clicked.connect(lambda: self._wrap_selection("**"))
         layout.addWidget(bold_btn)
 
         italic_btn = QPushButton("I")
+        italic_btn.setToolTip("Italic (Ctrl+I)")
         italic_font = QFont()
         italic_font.setItalic(True)
         italic_btn.setFont(italic_font)
-        italic_btn.setFixedWidth(32)
+        italic_btn.setFixedWidth(28)
         italic_btn.clicked.connect(lambda: self._wrap_selection("*"))
         layout.addWidget(italic_btn)
 
-        conlang_btn = QPushButton("Conlang")
-        conlang_btn.clicked.connect(lambda: self._wrap_selection("{{f:", "}}"))
-        layout.addWidget(conlang_btn)
-
-        bullet_btn = QPushButton("\u2022 List")
+        bullet_btn = QPushButton("• List")
+        bullet_btn.setToolTip("Toggle bullet list")
         bullet_btn.clicked.connect(self._toggle_bullet_list)
         layout.addWidget(bullet_btn)
 
-        layout.addSpacing(12)
+        layout.addWidget(self._make_vsep())
 
-        self.ipa_btn = QPushButton("IPA")
+        # --- Group 2: Conlang & Linguistics ---
+        conlang_btn = QPushButton("Conlang Script")
+        conlang_btn.setToolTip("Wrap text in custom conlang font {{f:...}} (Ctrl+K)")
+        conlang_btn.clicked.connect(lambda: self._wrap_selection("{{f:", "}}"))
+        layout.addWidget(conlang_btn)
+
+        ling_btn = QToolButton()
+        ling_btn.setText("Linguistics ▾")
+        ling_btn.setToolTip("Insert phonetic, small-caps, or sound-change notation")
+        ling_menu = QMenu(ling_btn)
+
+        act_ipa = QAction("IPA Transcription  {{ipa:/.../}}", self)
+        act_ipa.triggered.connect(lambda: self._wrap_selection("{{ipa:/", "/}}"))
+        ling_menu.addAction(act_ipa)
+
+        act_sc = QAction("Small Caps Gloss Tag  {{sc:NOM}}", self)
+        act_sc.triggered.connect(lambda: self._wrap_selection("{{sc:", "}}"))
+        ling_menu.addAction(act_sc)
+
+        act_rule = QAction("Sound Change Rule  {{rule:A > B / C _ D}}", self)
+        act_rule.triggered.connect(lambda: self._wrap_selection("{{rule:", "}}"))
+        ling_menu.addAction(act_rule)
+
+        ling_btn.setMenu(ling_menu)
+        ling_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        layout.addWidget(ling_btn)
+
+        self.ipa_btn = QPushButton("IPA Chart")
+        self.ipa_btn.setToolTip("Open interactive IPA character picker")
         self.ipa_btn.clicked.connect(self._toggle_ipa_picker)
         layout.addWidget(self.ipa_btn)
 
-        image_btn = QPushButton("Insert Image")
-        image_btn.clicked.connect(self._insert_image)
-        layout.addWidget(image_btn)
+        # Gloss Dropdown (supports both quickConlangMark block & classic Gloss Dialog)
+        gloss_btn = QToolButton()
+        gloss_btn.setText("Gloss ▾")
+        gloss_btn.setToolTip("Insert an interlinear gloss")
+        gloss_menu = QMenu(gloss_btn)
 
-        gloss_btn = QPushButton("Gloss Builder")
-        gloss_btn.clicked.connect(self._open_gloss_dialog)
+        act_gloss_block = QAction("Insert Auto-Aligned Gloss Block (::: gloss)", self)
+        act_gloss_block.triggered.connect(self._insert_gloss_template)
+        gloss_menu.addAction(act_gloss_block)
+
+        act_gloss_dlg = QAction("Open Gloss Builder Dialog...", self)
+        act_gloss_dlg.triggered.connect(self._open_gloss_dialog)
+        gloss_menu.addAction(act_gloss_dlg)
+
+        gloss_btn.setMenu(gloss_menu)
+        gloss_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         layout.addWidget(gloss_btn)
 
-        table_macro_btn = QPushButton("Insert Table")
+        # Callout Block Dropdown
+        callout_btn = QToolButton()
+        callout_btn.setText("Callout ▾")
+        callout_btn.setToolTip("Insert a styled Note, Example, Sound Rule, or Warning box")
+        callout_menu = QMenu(callout_btn)
+        for kind, label in (
+            ("note", "Note Box"),
+            ("example", "Example Box"),
+            ("rule", "Grammar / Sound Rule Box"),
+            ("warning", "Irregularity / Warning Box"),
+        ):
+            act = QAction(label, self)
+            act.triggered.connect(lambda checked=False, k=kind: self._insert_callout(k))
+            callout_menu.addAction(act)
+        callout_btn.setMenu(callout_menu)
+        callout_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        layout.addWidget(callout_btn)
+
+        layout.addWidget(self._make_vsep())
+
+        # --- Group 3: Embeds & Help ---
+        table_macro_btn = QPushButton("Embed Table")
+        table_macro_btn.setToolTip("Embed a dynamic Grammar Table {{table:Name}}")
         table_macro_btn.clicked.connect(self._insert_table_macro)
         layout.addWidget(table_macro_btn)
 
+        image_btn = QPushButton("Image")
+        image_btn.setToolTip("Import and embed an image")
+        image_btn.clicked.connect(self._insert_image)
+        layout.addWidget(image_btn)
+
+        help_btn = QPushButton("Syntax Guide")
+        help_btn.clicked.connect(self._show_syntax_help)
+        layout.addWidget(help_btn)
+
         layout.addStretch()
 
-        return layout
+        # --- Group 4: View Mode Switcher ---
+        self.view_group = QButtonGroup(self)
+        self.view_group.setExclusive(True)
+
+        for idx, (label, tip) in enumerate((
+            ("Write", "Editor only"),
+            ("Split", "Side-by-side Editor and Live Preview"),
+            ("Read", "Clean Reader view only"),
+        )):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setToolTip(tip)
+            if idx == 1:
+                btn.setChecked(True)
+            self.view_group.addButton(btn, idx)
+            layout.addWidget(btn)
+
+        self.view_group.idClicked.connect(self._set_view_mode)
+
+        return bar
+
+    def _build_status_bar(self):
+        footer = QFrame()
+        layout = QHBoxLayout(footer)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(12)
+
+        self.chapter_title_label = QLabel("Chapter: —")
+        self.chapter_title_label.setStyleSheet("font-weight: 600;")
+        layout.addWidget(self.chapter_title_label)
+
+        self.word_count_label = QLabel("0 words  •  0 chars")
+        self.word_count_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.word_count_label)
+
+        layout.addStretch()
+
+        self.save_status_label = QLabel("All changes saved")
+        self.save_status_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.save_status_label)
+
+        save_now_btn = QPushButton("Save Now")
+        save_now_btn.setToolTip("Save chapter immediately (Ctrl+S)")
+        save_now_btn.clicked.connect(self.save_grammar_rules)
+        layout.addWidget(save_now_btn)
+
+        return footer
+
+    @staticmethod
+    def _make_vsep():
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        return sep
+
+    def _setup_shortcuts(self):
+        QShortcut(QKeySequence("Ctrl+B"), self.editor, activated=lambda: self._wrap_selection("**"))
+        QShortcut(QKeySequence("Ctrl+I"), self.editor, activated=lambda: self._wrap_selection("*"))
+        QShortcut(QKeySequence("Ctrl+K"), self.editor, activated=lambda: self._wrap_selection("{{f:", "}}"))
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self.save_grammar_rules)
+
+    def _set_view_mode(self, mode_id: int):
+        if mode_id == 0:  # Write only
+            self.editor.setVisible(True)
+            self.preview.setVisible(False)
+        elif mode_id == 1:  # Split
+            self.editor.setVisible(True)
+            self.preview.setVisible(True)
+            self.editor_splitter.setSizes([450, 450])
+        elif mode_id == 2:  # Read only
+            self.editor.setVisible(False)
+            self.preview.setVisible(True)
+
+    # =========================================================================
+    # GRAMMAR TABLES PANE (Preserved & Integrated)
+    # =========================================================================
 
     def _build_tables_pane(self):
         tables_frame = QGroupBox("Grammar Tables")
@@ -255,9 +583,12 @@ class NotesTab(QWidget):
 
         return tables_frame
 
+    # =========================================================================
+    # CHAPTER MANAGEMENT & PERSISTENCE
+    # =========================================================================
+
     def load_grammar_rules(self):
         """Reload chapters from main_app.grammar_data (e.g. on tab activation)."""
-
         keep_index = self.current_section_index or 0
         self.sections = load_sections(self.main_app)
         self._populate_section_list(select_index=keep_index)
@@ -265,7 +596,7 @@ class NotesTab(QWidget):
     def save_grammar_rules(self):
         self.autosave_timer.stop()
         self._persist_sections()
-        # QMessageBox.information(self, "Success", "Grammar chapter saved.")
+        self.save_status_label.setText("All changes saved")
 
     def _persist_sections(self):
         payload = json.dumps({"sections": self.sections})
@@ -274,6 +605,7 @@ class NotesTab(QWidget):
 
     def _autosave_rules(self):
         self._persist_sections()
+        self.save_status_label.setText("All changes saved")
 
     def _populate_section_list(self, select_index=0):
         self._loading = True
@@ -288,35 +620,49 @@ class NotesTab(QWidget):
             select_index = max(0, min(select_index, len(self.sections) - 1))
             self.section_list.setCurrentRow(select_index)
 
+        if hasattr(self, "chapter_search") and self.chapter_search.text():
+            self._filter_section_list(self.chapter_search.text())
+
+    def _filter_section_list(self, query: str):
+        q = query.strip().lower()
+        for idx in range(self.section_list.count()):
+            item = self.section_list.item(idx)
+            item.setHidden(bool(q) and q not in item.text().lower())
+
     def _on_section_selected(self, row):
         if row < 0 or row >= len(self.sections):
             self.current_section_index = None
+            self.chapter_title_label.setText("Chapter: —")
             return
 
         self.current_section_index = row
-        content = self.sections[row].get('content', '')
+        section = self.sections[row]
+        content = section.get('content', '')
+        title = section.get('title', 'Untitled')
+
+        self.chapter_title_label.setText(f"Chapter: {title}")
 
         self._loading = True
         self.editor.setPlainText(content)
         self._loading = False
 
+        self._update_word_count(content)
         self._update_preview(content)
 
     def _add_section(self):
         title, ok = QInputDialog.getText(self, "New Chapter", "Chapter title:")
-
         if not ok or not title.strip():
             return
 
         title = title.strip()
-
         if any(s['title'] == title for s in self.sections):
             QMessageBox.warning(self, "Duplicate", f"A chapter named '{title}' already exists.")
             return
 
-        self.sections.append({"id": str(uuid.uuid4()), "title": title, "content": ""})
+        self.sections.append({"id": str(uuid.uuid4()), "title": title, "content": f"# {title}\n\n"})
         self._persist_sections()
         self._populate_section_list(select_index=len(self.sections) - 1)
+        self.editor.setFocus()
 
     def _rename_section(self):
         row = self.section_list.currentRow()
@@ -325,12 +671,10 @@ class NotesTab(QWidget):
 
         old_title = self.sections[row]['title']
         title, ok = QInputDialog.getText(self, "Rename Chapter", "Chapter title:", text=old_title)
-
         if not ok or not title.strip():
             return
 
         title = title.strip()
-
         if any(i != row and s['title'] == title for i, s in enumerate(self.sections)):
             QMessageBox.warning(self, "Duplicate", f"A chapter named '{title}' already exists.")
             return
@@ -350,7 +694,6 @@ class NotesTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
-
         if reply != QMessageBox.StandardButton.Yes:
             return
 
@@ -361,67 +704,521 @@ class NotesTab(QWidget):
         self._persist_sections()
         self._populate_section_list(select_index=max(0, row - 1))
 
+    def _move_section(self, direction: int):
+        row = self.section_list.currentRow()
+        if row < 0:
+            return
+        new_row = row + direction
+        if new_row < 0 or new_row >= len(self.sections):
+            return
+
+        self.sections[row], self.sections[new_row] = self.sections[new_row], self.sections[row]
+        self._persist_sections()
+        self._populate_section_list(select_index=new_row)
+
     def _on_editor_text_changed(self):
         if self._loading or self.current_section_index is None:
             return
 
         text = self.editor.toPlainText()
         self.sections[self.current_section_index]['content'] = text
+        self.save_status_label.setText("Unsaved changes...")
+        self._update_word_count(text)
         self._update_preview(text)
         self.autosave_timer.start()
 
-    def _update_preview(self, markdown_text):
-        rendered = self._expand_table_macros(markdown_text)
-        rendered = self._expand_font_macros(rendered)
-        self.preview.setMarkdown(rendered)
+    def _update_word_count(self, text: str):
+        words = len(text.split()) if text.strip() else 0
+        chars = len(text)
+        self.word_count_label.setText(f"{words:,} words  •  {chars:,} chars")
 
-    def _expand_table_macros(self, text):
+    # =========================================================================
+    # CONLANGMARK PARSER & HTML RENDERER
+    # =========================================================================
+
+    def _update_preview(self, markdown_text: str):
+        # 1. Expand multi-line blocks first (::: gloss, ::: note/example/rule/warning)
+        processed = self._expand_gloss_blocks(markdown_text)
+        processed = self._expand_callout_blocks(processed)
+
+        # 2. Expand embedded tables into rich HTML tables
+        processed = self._expand_table_macros(processed)
+
+        # 3. Expand inline linguistic macros ({{f:...}}, {{ipa:...}}, {{sc:...}}, {{rule:...}})
+        processed = self._expand_inline_macros(processed)
+
+        body_html = markdown.markdown(
+            processed,
+            extensions=['tables', 'sane_lists', 'fenced_code', 'nl2br']
+        )
+
+        # 4. Prepare custom conlang @font-face under an isolated family name
+        font_face_css = ""
+        conlang_font_family = "ConlangCustomFont"
+        font_path = getattr(self.main_app, "font_path", None)
+
+        if font_path and os.path.exists(font_path):
+            try:
+                with open(font_path, "rb") as font_file:
+                    font_base64 = base64.b64encode(font_file.read()).decode('utf-8')
+                    font_face_css = f"""
+                        @font-face {{
+                            font-family: "{conlang_font_family}";
+                            src: url(data:font/truetype;base64,{font_base64}) format('truetype');
+                        }}
+                    """
+            except OSError:
+                pass
+
+        # 5. Theme palette
+        if getattr(self, 'is_dark_mode', False):
+            bg_color = "#0d1117"
+            surface_color = "#161b22"
+            text_color = "#e6edf3"
+            muted_color = "#8b949e"
+            border_color = "#30363d"
+            th_bg = "#21262d"
+            row_th_bg = "#1b2028"
+            accent_color = "#58a6ff"
+            code_bg = "rgba(110,118,129,0.25)"
+        else:
+            bg_color = "#ffffff"
+            surface_color = "#f6f8fa"
+            text_color = "#1f2328"
+            muted_color = "#57606a"
+            border_color = "#d0d7de"
+            th_bg = "#eaeef2"
+            row_th_bg = "#f0f3f6"
+            accent_color = "#0969da"
+            code_bg = "#eff1f3"
+
+        full_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                {font_face_css}
+
+                * {{ box-sizing: border-box; }}
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+                    line-height: 1.7;
+                    color: {text_color};
+                    background-color: {bg_color};
+                    padding: 28px 36px;
+                    max-width: 880px;
+                    margin: 0 auto;
+                    font-size: 15px;
+                }}
+                h1, h2, h3, h4 {{
+                    color: {text_color};
+                    font-weight: 650;
+                    line-height: 1.3;
+                    margin-top: 1.5em;
+                    margin-bottom: 0.5em;
+                }}
+                h1 {{
+                    font-size: 1.85em;
+                    padding-bottom: 0.3em;
+                    border-bottom: 2px solid {border_color};
+                    margin-top: 0.2em;
+                }}
+                h2 {{
+                    font-size: 1.4em;
+                    padding-bottom: 0.2em;
+                    border-bottom: 1px solid {border_color};
+                }}
+                h3 {{ font-size: 1.15em; }}
+                hr {{
+                    border: none;
+                    border-top: 1px solid {border_color};
+                    margin: 24px 0;
+                }}
+
+                /* Conlang Script & Linguistic Inline Badges */
+                .conlang-script {{
+                    font-family: "{conlang_font_family}", sans-serif;
+                    font-size: 1.25em;
+                    line-height: 1.2;
+                    padding: 0 2px;
+                }}
+                .ipa-badge {{
+                    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", "Noto Sans", "Segoe UI", sans-serif;
+                    background-color: {code_bg};
+                    padding: 1px 6px;
+                    border-radius: 4px;
+                    font-size: 0.95em;
+                }}
+                .sc {{
+                    font-variant: small-caps;
+                    font-size: 0.92em;
+                    letter-spacing: 0.04em;
+                    font-weight: 600;
+                    color: {accent_color};
+                }}
+                .sound-rule {{
+                    font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", monospace;
+                    background-color: {surface_color};
+                    border: 1px solid {border_color};
+                    padding: 2px 8px;
+                    border-radius: 5px;
+                    font-weight: 500;
+                }}
+
+                /* Interlinear Gloss Blocks */
+                .gloss-card {{
+                    background-color: {surface_color};
+                    border: 1px solid {border_color};
+                    border-left: 4px solid {accent_color};
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    margin: 16px 0;
+                    overflow-x: auto;
+                }}
+                .gloss-title {{
+                    font-size: 0.8em;
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    color: {muted_color};
+                    margin-bottom: 6px;
+                    font-weight: 600;
+                }}
+                .gloss-units {{
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px 22px;
+                    margin-bottom: 6px;
+                }}
+                .gloss-unit {{
+                    display: flex;
+                    flex-direction: column;
+                }}
+                .gloss-line-0 {{
+                    font-weight: 600;
+                    font-style: italic;
+                    color: {text_color};
+                }}
+                .gloss-line-extra {{
+                    color: {text_color};
+                }}
+                .gloss-line-tags {{
+                    font-size: 0.92em;
+                    color: {muted_color};
+                }}
+                .gloss-translation {{
+                    margin-top: 6px;
+                    padding-top: 6px;
+                    border-top: 1px dashed {border_color};
+                    color: {text_color};
+                }}
+
+                /* Callout Cards */
+                .callout {{
+                    background-color: {surface_color};
+                    border: 1px solid {border_color};
+                    border-left-width: 4px;
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    margin: 16px 0;
+                }}
+                .callout-header {{
+                    font-weight: 700;
+                    font-size: 0.9em;
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                    margin-bottom: 6px;
+                }}
+                .callout-note {{ border-left-color: #3b82f6; }}
+                .callout-note .callout-header {{ color: #3b82f6; }}
+                .callout-example {{ border-left-color: #10b981; }}
+                .callout-example .callout-header {{ color: #10b981; }}
+                .callout-rule {{ border-left-color: #a855f7; }}
+                .callout-rule .callout-header {{ color: #a855f7; }}
+                .callout-warning {{ border-left-color: #f59e0b; }}
+                .callout-warning .callout-header {{ color: #f59e0b; }}
+
+                /* Tables */
+                .table-wrapper {{
+                    margin: 18px 0;
+                    overflow-x: auto;
+                    border: 1px solid {border_color};
+                    border-radius: 6px;
+                }}
+                .table-caption {{
+                    background-color: {th_bg};
+                    padding: 8px 14px;
+                    font-weight: 700;
+                    font-size: 0.95em;
+                    border-bottom: 1px solid {border_color};
+                }}
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 0.94em;
+                }}
+                th, td {{
+                    border: 1px solid {border_color};
+                    padding: 8px 12px;
+                    text-align: left;
+                }}
+                .table-wrapper table th, .table-wrapper table td {{
+                    border-left: none;
+                    border-right: 1px solid {border_color};
+                    border-bottom: 1px solid {border_color};
+                }}
+                th {{
+                    background-color: {th_bg};
+                    font-weight: 600;
+                }}
+                th.row-header {{
+                    background-color: {row_th_bg};
+                    font-weight: 600;
+                    width: 1%;
+                    white-space: nowrap;
+                }}
+                tr:nth-child(even) td {{
+                    background-color: {surface_color};
+                }}
+
+                img {{
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+                    margin: 10px 0;
+                }}
+                blockquote {{
+                    margin: 0 0 16px 0;
+                    padding: 8px 16px;
+                    color: {muted_color};
+                    border-left: 4px solid {border_color};
+                    background: {surface_color};
+                    border-radius: 0 6px 6px 0;
+                }}
+                code {{
+                    background-color: {code_bg};
+                    padding: 0.2em 0.4em;
+                    border-radius: 4px;
+                    font-family: "JetBrains Mono", "Consolas", monospace;
+                    font-size: 0.9em;
+                }}
+                pre code {{
+                    display: block;
+                    padding: 12px;
+                    overflow-x: auto;
+                }}
+            </style>
+        </head>
+        <body>
+            {body_html}
+        </body>
+        </html>
+        """
+
+        images_dir = self._ensure_image_dir()
+        base_url = QUrl.fromLocalFile(images_dir + os.sep)
+        self.preview.setHtml(full_html, base_url)
+
+    def _expand_inline_macros(self, text: str) -> str:
+        # {{f:text}} -> Conlang custom font span
+        text = FONT_MACRO_RE.sub(
+            lambda m: f'<span class="conlang-script">{html.escape(m.group(1))}</span>',
+            text
+        )
+        # {{ipa:text}} -> IPA transcription badge
+        text = IPA_MACRO_RE.sub(
+            lambda m: f'<span class="ipa-badge">{html.escape(m.group(1))}</span>',
+            text
+        )
+        # {{sc:text}} -> Small caps grammatical tag
+        text = SC_MACRO_RE.sub(
+            lambda m: f'<span class="sc">{html.escape(m.group(1).lower())}</span>',
+            text
+        )
+        # {{rule:A > B / C _ D}} -> Formatted phonological rule
+        def _format_rule(match):
+            raw = html.escape(match.group(1).strip())
+            raw = raw.replace("-&gt;", "→").replace("&gt;", "→")
+            return f'<span class="sound-rule">{raw}</span>'
+
+        text = RULE_MACRO_RE.sub(_format_rule, text)
+        return text
+
+    def _expand_gloss_blocks(self, text: str) -> str:
+        """
+        Transforms:
+        ::: gloss Optional Title
+        conlang line
+        morpheme-break line
+        GLOSS.TAG line
+        "Free translation"
+        :::
+        into an aligned flexbox interlinear gloss card.
+        """
+        def _format_gloss_tags(token: str) -> str:
+            escaped = html.escape(token)
+            return GRAMMAR_TAG_RE.sub(
+                lambda m: f'<span class="sc">{m.group(1).lower()}</span>',
+                escaped
+            )
+
+        def _replace(match):
+            title = (match.group(1) or "").strip()
+            body = match.group(2).strip()
+            raw_lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+            if not raw_lines:
+                return ""
+
+            translation = ""
+            if len(raw_lines) >= 2 and (
+                raw_lines[-1].startswith(('"', "'", "“", "‘"))
+                or raw_lines[-1].endswith(('"', "'", "”", "’"))
+            ):
+                translation = raw_lines.pop()
+
+            tokenized_rows = [ln.split() for ln in raw_lines]
+            max_cols = max((len(r) for r in tokenized_rows), default=0)
+
+            units_html = []
+            for col_idx in range(max_cols):
+                col_cells = []
+                for row_idx, row_tokens in enumerate(tokenized_rows):
+                    tok = row_tokens[col_idx] if col_idx < len(row_tokens) else ""
+                    if row_idx == 0:
+                        # Support inline {{f:...}} on the first gloss line
+                        cell_txt = self._expand_inline_macros(tok)
+                        col_cells.append(f'<span class="gloss-line-0">{cell_txt}</span>')
+                    elif row_idx == len(tokenized_rows) - 1:
+                        col_cells.append(f'<span class="gloss-line-tags">{_format_gloss_tags(tok)}</span>')
+                    else:
+                        col_cells.append(f'<span class="gloss-line-extra">{html.escape(tok)}</span>')
+
+                units_html.append(f'<div class="gloss-unit">{"".join(col_cells)}</div>')
+
+            title_html = f'<div class="gloss-title">{html.escape(title)}</div>' if title else ""
+            trans_html = (
+                f'<div class="gloss-translation">{html.escape(translation)}</div>'
+                if translation else ""
+            )
+
+            return (
+                f'\n<div class="gloss-card">'
+                f'{title_html}'
+                f'<div class="gloss-units">{"".join(units_html)}</div>'
+                f'{trans_html}'
+                f'</div>\n'
+            )
+
+        return GLOSS_BLOCK_RE.sub(_replace, text)
+
+    def _expand_callout_blocks(self, text: str) -> str:
+        default_titles = {
+            "note": "Note",
+            "example": "Example",
+            "rule": "Grammar / Sound Rule",
+            "warning": "Irregularity / Exception",
+        }
+
+        def _replace(match):
+            kind = match.group(1).lower()
+            custom_title = (match.group(2) or "").strip()
+            body_md = match.group(3).strip()
+
+            header = html.escape(custom_title) if custom_title else default_titles.get(kind, "Note")
+            # Process inline macros & markdown inside the callout body
+            inner_expanded = self._expand_inline_macros(body_md)
+            inner_html = markdown.markdown(
+                inner_expanded,
+                extensions=['tables', 'sane_lists', 'fenced_code', 'nl2br']
+            )
+            return (
+                f'\n<div class="callout callout-{kind}">'
+                f'<div class="callout-header">{header}</div>'
+                f'<div class="callout-body">{inner_html}</div>'
+                f'</div>\n'
+            )
+
+        return CALLOUT_BLOCK_RE.sub(_replace, text)
+
+    def _expand_table_macros(self, text: str) -> str:
         def replace(match):
             name = match.group(1).strip()
             table = self.main_app.grammar_data.get('tables', {}).get(name)
             if not table:
-                return f"*[Missing table: {name}]*"
-            return self._table_to_markdown(table, name)
+                return f'*[Missing table: {html.escape(name)}]*'
+            return self._table_to_html(table, name)
 
         return TABLE_MACRO_RE.sub(replace, text)
 
-    def _expand_font_macros(self, text):
-        try:
-            font_family = getattr(self.main_app, "font").family()
-        except AttributeError:
-            font_family = "sans-serif"
+    def _table_to_html(self, table: dict, name: str) -> str:
+        col_headers = table.get('col_headers', [])
+        row_headers = table.get('row_headers', [])
+        data = table.get('data', [])
 
-        def replace(match):
-            content = match.group(1)
-            return f'<span style="font-family: \'{font_family}\';">{content}</span>'
+        ths = []
+        if row_headers:
+            ths.append('<th class="row-header"></th>')
+        for ch in col_headers:
+            ths.append(f'<th>{ self._expand_inline_macros(html.escape(str(ch))) }</th>')
 
-        return FONT_MACRO_RE.sub(replace, text)
+        rows_html = []
+        for r_idx, row in enumerate(data):
+            cells = []
+            if row_headers:
+                r_label = str(row_headers[r_idx]) if r_idx < len(row_headers) else ""
+                cells.append(f'<th scope="row" class="row-header">{self._expand_inline_macros(html.escape(r_label))}</th>')
+            for cell in row:
+                clean = str(cell).replace('\n', '<br>')
+                cells.append(f'<td>{self._expand_inline_macros(clean)}</td>')
+            rows_html.append(f'<tr>{"".join(cells)}</tr>')
+
+        return (
+            f'\n<div class="table-wrapper">'
+            f'<div class="table-caption">{html.escape(name)}</div>'
+            f'<table>'
+            f'<thead><tr>{"".join(ths)}</tr></thead>'
+            f'<tbody>{"".join(rows_html)}</tbody>'
+            f'</table>'
+            f'</div>\n'
+        )
 
     @staticmethod
     def _table_to_markdown(table, name):
+        """Used when exporting a Grammar Table to an external .md file."""
         col_headers = table.get('col_headers', [])
         row_headers = table.get('row_headers', [])
         data = table.get('data', [])
 
         header_row = ([""] + list(col_headers)) if row_headers else list(col_headers)
-        lines = [f"**{name}**", ""]
+
+        lines = [f"### {name}", ""]
         lines.append("| " + " | ".join(header_row) + " |")
         lines.append("| " + " | ".join(["---"] * len(header_row)) + " |")
 
         for r_idx, row in enumerate(data):
-            row_label = [row_headers[r_idx]] if row_headers and r_idx < len(row_headers) else []
-            cells = row_label + [str(c) for c in row]
+            if row_headers:
+                label = str(row_headers[r_idx]) if r_idx < len(row_headers) else ""
+                row_label = [label]
+            else:
+                row_label = []
+
+            clean_row = [str(c).replace('\n', ' ') for c in row]
+            cells = row_label + clean_row
             lines.append("| " + " | ".join(cells) + " |")
 
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines) + "\n\n"
+
+    # =========================================================================
+    # EDITOR INSERTION HELPERS
+    # =========================================================================
 
     def _wrap_selection(self, prefix, suffix=None):
         suffix = suffix if suffix is not None else prefix
         cursor = self.editor.textCursor()
 
         if cursor.hasSelection():
-            start, end = cursor.selectionStart(), cursor.selectionEnd()
-            text = self.editor.toPlainText()[start:end]
+            text = cursor.selectedText().replace('\u2029', '\n')
             cursor.insertText(f"{prefix}{text}{suffix}")
         else:
             pos = cursor.position()
@@ -429,10 +1226,40 @@ class NotesTab(QWidget):
             cursor.setPosition(pos + len(prefix))
             self.editor.setTextCursor(cursor)
 
+        self.editor.setFocus()
+
     def _insert_heading(self, level):
         cursor = self.editor.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
         cursor.insertText("#" * level + " ")
+        self.editor.setFocus()
+
+    def _insert_gloss_template(self):
+        template = (
+            "\n::: gloss Example Clause\n"
+            "word1 word2\n"
+            "stem1-affix stem2\n"
+            "1SG.NOM verb.PST\n"
+            "\"Free translation here.\"\n"
+            ":::\n"
+        )
+        self.editor.insertPlainText(template)
+        self.editor.setFocus()
+
+    def _insert_callout(self, kind: str):
+        titles = {
+            "note": "Usage Note",
+            "example": "Corpus Example",
+            "rule": "Phonological Shift",
+            "warning": "Irregular Form",
+        }
+        template = (
+            f"\n::: {kind} {titles.get(kind, 'Note')}\n"
+            f"Write your {kind} details here...\n"
+            f":::\n"
+        )
+        self.editor.insertPlainText(template)
+        self.editor.setFocus()
 
     def _toggle_bullet_list(self):
         cursor = self.editor.textCursor()
@@ -440,6 +1267,7 @@ class NotesTab(QWidget):
         if not cursor.hasSelection():
             cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
             cursor.insertText("- ")
+            self.editor.setFocus()
             return
 
         doc = self.editor.document()
@@ -463,6 +1291,7 @@ class NotesTab(QWidget):
             line_cursor.insertText("- ")
 
         edit_cursor.endEditBlock()
+        self.editor.setFocus()
 
     def _init_ipa_picker(self):
         self.ipa_picker = IPAPickerPopup(self)
@@ -527,7 +1356,6 @@ class NotesTab(QWidget):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Insert Image", "", "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)"
         )
-
         if not file_path:
             return
 
@@ -539,7 +1367,6 @@ class NotesTab(QWidget):
             self, "Image Alt Text", "Enter a short description:",
             text=os.path.splitext(dest_name)[0]
         )
-
         if not ok or not alt_text.strip():
             alt_text = os.path.splitext(dest_name)[0]
 
@@ -547,7 +1374,6 @@ class NotesTab(QWidget):
 
     def handle_clipboard_image(self, mime_data):
         """Called by GrammarEditor.insertFromMimeData on image paste."""
-
         image = mime_data.imageData()
         qimage = image if isinstance(image, QImage) else QImage(image)
         if qimage is None or qimage.isNull():
@@ -567,7 +1393,9 @@ class NotesTab(QWidget):
     def _open_gloss_dialog(self):
         dialog = GlossDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.editor.insertPlainText("\n" + dialog.get_markdown() + "\n")
+            gloss_text = dialog.get_markdown().strip()
+            formatted_gloss = f"\n::: gloss\n{gloss_text}\n:::\n"
+            self.editor.insertPlainText(formatted_gloss)
 
     def _insert_table_macro(self):
         table_names = sorted(self.main_app.grammar_data.get('tables', {}).keys())
@@ -578,6 +1406,10 @@ class NotesTab(QWidget):
         name, ok = QInputDialog.getItem(self, "Insert Table", "Choose a table to embed:", table_names, 0, False)
         if ok and name:
             self.editor.insertPlainText(f"{{{{table:{name}}}}}")
+
+    # =========================================================================
+    # GRAMMAR TABLE METHODS
+    # =========================================================================
 
     def update_grammar_table_listbox(self):
         self.table_listbox.clear()
@@ -628,7 +1460,6 @@ class NotesTab(QWidget):
     def _on_table_item_changed(self, _item):
         if self._loading_table:
             return
-
         self.table_autosave_timer.start()
 
     def _autosave_current_table(self):
@@ -675,18 +1506,16 @@ class NotesTab(QWidget):
         self.main_app.grammar_data['tables'][table_name] = table_object
         self.main_app.save_grammar()
 
-        if not silent:
-            pass
-            # QMessageBox.information(self, "Success", f"Table '{table_name}' saved.")
+        # Live-refresh chapter preview if this table is embedded
+        if self.current_section_index is not None:
+            self._update_preview(self.editor.toPlainText())
 
     def create_grammar_table(self):
         table_name, ok = QInputDialog.getText(self, "Create Table", "Enter a name for the new table:")
-
         if not ok or not table_name or table_name.strip() == "":
             return
 
         table_name = table_name.strip()
-
         existing_tables = [self.table_listbox.item(i).text() for i in range(self.table_listbox.count())]
         if table_name in existing_tables:
             QMessageBox.warning(self, "Duplicate", f"A table named '{table_name}' already exists.")
@@ -726,7 +1555,6 @@ class NotesTab(QWidget):
             return
 
         table_name = selected_items[0].text()
-
         reply = QMessageBox.question(
             self,
             "Confirm Delete",
@@ -749,7 +1577,6 @@ class NotesTab(QWidget):
             current_row = self.table_editor.rowCount()
 
         self.table_editor.insertRow(current_row)
-
         new_header = QTableWidgetItem(str(current_row + 1))
         self.table_editor.setVerticalHeaderItem(current_row, new_header)
 
@@ -762,10 +1589,8 @@ class NotesTab(QWidget):
         current_row = self.table_editor.currentRow()
         if current_row != -1:
             self.table_editor.removeRow(current_row)
-
             for r in range(current_row, self.table_editor.rowCount()):
                 self.table_editor.setVerticalHeaderItem(r, QTableWidgetItem(str(r + 1)))
-
             self.table_autosave_timer.start()
 
     def add_table_column(self):
@@ -774,7 +1599,6 @@ class NotesTab(QWidget):
             current_col = self.table_editor.columnCount()
 
         self.table_editor.insertColumn(current_col)
-
         new_header = QTableWidgetItem(f"Header {current_col + 1}")
         self.table_editor.setHorizontalHeaderItem(current_col, new_header)
 
@@ -787,10 +1611,8 @@ class NotesTab(QWidget):
         current_col = self.table_editor.currentColumn()
         if current_col != -1:
             self.table_editor.removeColumn(current_col)
-
             for c in range(current_col, self.table_editor.columnCount()):
                 self.table_editor.setHorizontalHeaderItem(c, QTableWidgetItem(f"Header {c + 1}"))
-
             self.table_autosave_timer.start()
 
     def edit_table_header(self, logical_index):
@@ -800,7 +1622,6 @@ class NotesTab(QWidget):
             header_item = self.table_editor.horizontalHeaderItem(logical_index)
             old_text = header_item.text() if header_item else f"Header {logical_index + 1}"
             new_text, ok = QInputDialog.getText(self, "Edit Header", "Enter new column header:", text=old_text)
-
             if ok and new_text:
                 self.table_editor.setHorizontalHeaderItem(logical_index, QTableWidgetItem(new_text))
                 self.table_autosave_timer.start()
@@ -809,7 +1630,6 @@ class NotesTab(QWidget):
             header_item = self.table_editor.verticalHeaderItem(logical_index)
             old_text = header_item.text() if header_item else str(logical_index + 1)
             new_text, ok = QInputDialog.getText(self, "Edit Header", "Enter new row header:", text=old_text)
-
             if ok and new_text:
                 self.table_editor.setVerticalHeaderItem(logical_index, QTableWidgetItem(new_text))
                 self.table_autosave_timer.start()
@@ -922,3 +1742,60 @@ class NotesTab(QWidget):
         table_name = selected_items[0].text()
         cursor = self.editor.textCursor()
         cursor.insertText(f"\n{{{{table:{table_name}}}}}\n")
+
+    def update_theme(self, is_dark_mode: bool):
+        self.is_dark_mode = is_dark_mode
+        if hasattr(self, "highlighter"):
+            self.highlighter.set_theme(is_dark_mode)
+
+        if self.current_section_index is not None:
+            text = self.editor.toPlainText()
+            self._update_preview(text)
+
+    def _show_syntax_help(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("ConlangMark & Syntax Guide")
+        dialog.resize(580, 540)
+        layout = QVBoxLayout(dialog)
+
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+
+        help_html = """
+        <h2 style="margin-bottom: 4px;">ConlangMark Reference Guide</h2>
+        <hr>
+        <p><b>Standard Markdown:</b> <code># H1</code>, <code>## H2</code>, <code>**bold**</code>,
+        <code>*italic*</code>, <code>- bullet list</code>, <code>&gt; blockquote</code></p>
+
+        <h3>Inline Linguistic Macros</h3>
+        <ul>
+            <li><b>Conlang Script:</b> <code>{{f:text}}</code> — Renders text in your custom conlang font.</li>
+            <li><b>IPA Transcription:</b> <code>{{ipa:/kaltxɪ/}}</code> — Styled phonetic badge with IPA font stack.</li>
+            <li><b>Small Caps Tag:</b> <code>{{sc:erg}}</code> — Renders grammatical labels in small caps.</li>
+            <li><b>Sound Change Rule:</b> <code>{{rule:a &gt; e / _ i}}</code> — Formats phonological shift rules.</li>
+            <li><b>Embed Grammar Table:</b> <code>{{table:TableName}}</code> — Live-embeds a table from below.</li>
+        </ul>
+
+        <h3>Auto-Aligned Interlinear Glosses</h3>
+        <pre style="padding:8px; border-radius:4px;">::: gloss Example Clause
+kaltxì ma frapo
+kaltxì ma fra-po
+hello VOC all-person
+"Hello, everyone!"
+:::</pre>
+        <p><i>Words align automatically column-by-column, and uppercase tags like <code>VOC</code>, <code>1SG</code>, or <code>NOM</code> render in small caps.</i></p>
+
+        <h3>Callout Boxes</h3>
+        <pre style="padding:8px; border-radius:4px;">::: note Historical Note
+Final vowels were dropped in unstressed syllables.
+:::</pre>
+        <p><i>Supported types: <code>::: note</code>, <code>::: example</code>, <code>::: rule</code>, <code>::: warning</code>.</i></p>
+        """
+        browser.setHtml(help_html)
+        layout.addWidget(browser)
+
+        close_btn = QPushButton("Close Guide")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+
+        dialog.exec()

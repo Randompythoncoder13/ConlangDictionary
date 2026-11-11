@@ -27,8 +27,8 @@ This application provides a comprehensive suite of tools for conlang development
 
 
 3. Notes Tab
-   + Chapters: A dedicated editor for your main grammar documentation (e.g., phonology, syntax, morphology) featuring a live Markdown preview alongside the rich text editor. All chapters autosave continuously as you type.
-   + Rich Formatting Tools: Use built-in tools to insert images (via file browser or clipboard paste), use the integrated Gloss Builder, insert special characters with the IPA picker, and wrap text in custom conlang fonts using macros.
+   + Chapters: A dedicated editor for your main grammar documentation (e.g., phonology, syntax, morphology) featuring a live preview alongside the text editor. All chapters autosave continuously as you type.
+   + Formatting Tools: Use built-in tools to insert images (via file browser or clipboard paste), use the integrated Gloss Builder, insert special characters with the IPA picker, and wrap text in custom conlang fonts using macros.
    + Grammar Tables: Create and manage multiple tables for things like noun declensions, verb conjugations, or affix lists. The table editor supports adding/removing rows and columns, editing horizontal and vertical headers, importing from CSV, and exporting to CSV or Markdown. Tables also save automatically upon editing.
    + Embedded Elements: Insert created grammar tables directly into your text chapters using an embed macro.
 

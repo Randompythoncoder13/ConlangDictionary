@@ -35,16 +35,16 @@ class ConlangDictionaryApp(QMainWindow):
     """
 
     #region init
-    def __init__(self):
+    def __init__(self, font_path):
         super().__init__()
         self.setWindowTitle("Conlang Dictionary")
         self.setGeometry(100, 100, 1100, 800)
 
         # --- Data File Setup ---
         self._setup_directories()
-        self._load_theme_mode()
         self.path = str(Path(__file__).parent.resolve())
         self.sound_path = None
+        self.font_path = font_path
 
         self.font_exists = False
         self.custom_font_on = True
@@ -87,6 +87,8 @@ class ConlangDictionaryApp(QMainWindow):
 
         # --- Create UI ---
         self.create_widgets()
+
+        self._load_theme_mode()
 
         # --- Initial Population ---
         self.tab_dictionary.update_word_display()
@@ -188,8 +190,6 @@ class ConlangDictionaryApp(QMainWindow):
         """)
         self.setCentralWidget(self.main_notebook)
 
-        self.create_menu_bar()
-
         self.tab_alphabet = AlphabetTab(self)
         self.tab_dictionary = DictionaryTab(self)
         self.tab_word_generator = WordGenTab(self)
@@ -197,6 +197,8 @@ class ConlangDictionaryApp(QMainWindow):
         self.tab_ipa = IPATab(self)
         self.tab_stats = StatsTab(self)
         self.tab_help = HelpTab(self)
+
+        self.create_menu_bar()
 
         self.main_notebook.addTab(self.tab_dictionary, 'Dictionary')
         self.main_notebook.addTab(self.tab_word_generator, 'Word Generator')
@@ -471,10 +473,12 @@ class ConlangDictionaryApp(QMainWindow):
     def set_dark_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         qdarktheme.setup_theme("dark", corner_shape="rounded")
+        self.tab_grammar.update_theme(True)
 
     def set_light_mode(self):
         QGuiApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
         qdarktheme.setup_theme("light", corner_shape="rounded")
+        self.tab_grammar.update_theme(False)
 
     def toggle_light_dark_mode(self):
         with open(self.settings, "r") as f:

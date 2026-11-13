@@ -59,6 +59,6 @@ if __name__ == "__main__":
     else:
         pass
 
-    main_window = ConlangDictionaryApp()
+    main_window = ConlangDictionaryApp(font_path)
     main_window.show()
     sys.exit(app.exec())

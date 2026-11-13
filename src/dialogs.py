@@ -627,31 +627,7 @@ class GlossDialog(QDialog):
         gloss = self.gloss_edit.text().strip()
         translation = self.translation_edit.text().strip()
 
-        return self.get_aligned_gloss(original, morphemes, gloss, translation)
-
-    def get_aligned_gloss(self, line1, line2, line3, line4_translation):
-        tokens1 = line1.split()
-        tokens2 = line2.split()
-        tokens3 = line3.split()
-
-        if not (len(tokens1) == len(tokens2) == len(tokens3)):
-            QMessageBox.warning(
-                self, "Input Error",
-                "The first three lines must have the same number of space-separated words."
-            )
-
-        aligned_1 = ""
-        aligned_2 = ""
-        aligned_3 = ""
-
-        for t1, t2, t3 in zip(tokens1, tokens2, tokens3):
-            col_width = max(len(t1), len(t2), len(t3)) + 1
-
-            aligned_1 += t1.ljust(col_width)
-            aligned_2 += t2.ljust(col_width)
-            aligned_3 += t3.ljust(col_width)
-
-        return f"{aligned_1}\n\n{aligned_2}\n\n{aligned_3}\n\n{line4_translation}\n\n"
+        return f"{original}\n{original}\n{morphemes}\n{gloss}\n\"{translation}\""
 
 
 class ImageManagementDialog(QDialog):

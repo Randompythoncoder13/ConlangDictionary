@@ -26,17 +26,13 @@ from src.custom_widgets import IPAPickerPopup, GrammarEditor
 from src.dialogs import GlossDialog
 from src.functions import load_sections
 
-# --- Regex Patterns for ConlangMark ---
 TABLE_MACRO_RE = re.compile(r"\{\{table:([^}]+)\}\}")
 FONT_MACRO_RE = re.compile(r"\{\{f:([^}]+)\}\}")
 IPA_MACRO_RE = re.compile(r"\{\{ipa:([^}]+)\}\}")
 SC_MACRO_RE = re.compile(r"\{\{sc:([^}]+)\}\}")
 RULE_MACRO_RE = re.compile(r"\{\{rule:([^}]+)\}\}")
 
-GLOSS_BLOCK_RE = re.compile(
-    r"^:::\s*gloss(?:\s+([^\n]*))?\n(.*?)\n^:::\s*$",
-    re.MULTILINE | re.DOTALL
-)
+GLOSS_BLOCK_RE = re.compile(r"^:::\s*gloss(?:\s+([^\n]*))?\n(.*?)\n^:::\s*$", re.MULTILINE | re.DOTALL)
 CALLOUT_BLOCK_RE = re.compile(
     r"^:::\s*(note|example|rule|warning)(?:\s+([^\n]*))?\n(.*?)\n^:::\s*$",
     re.MULTILINE | re.DOTALL | re.IGNORECASE
@@ -45,8 +41,6 @@ GRAMMAR_TAG_RE = re.compile(r"\b([123]?(?:SG|PL|DU)|[A-Z]{2,6})\b")
 
 
 class ConlangMarkupHighlighter(QSyntaxHighlighter):
-    """Lightweight syntax highlighter for Markdown + ConlangMark macros."""
-
     def __init__(self, document, is_dark=False):
         super().__init__(document)
         self.is_dark = is_dark
@@ -93,13 +87,13 @@ class ConlangMarkupHighlighter(QSyntaxHighlighter):
         i_fmt.setFontItalic(True)
         self.rules.append((re.compile(r"(?<!\*)\*[^*\n]+\*(?!\*)"), i_fmt))
 
-        # Macros: {{f:...}}, {{table:...}}, {{ipa:...}}, {{sc:...}}, {{rule:...}}
+        # Macros
         m_fmt = QTextCharFormat()
         m_fmt.setForeground(QColor(c_macro))
         m_fmt.setFontWeight(QFont.Weight.DemiBold)
         self.rules.append((re.compile(r"\{\{[a-zA-Z]+:[^}]+\}\}"), m_fmt))
 
-        # Fencing: ::: gloss / ::: note / :::
+        # Fencing
         blk_fmt = QTextCharFormat()
         blk_fmt.setForeground(QColor(c_block))
         blk_fmt.setFontWeight(QFont.Weight.Bold)
@@ -144,10 +138,6 @@ class NotesTab(QWidget):
         self._populate_section_list()
         self.update_grammar_table_listbox()
 
-    # =========================================================================
-    # UI CONSTRUCTION
-    # =========================================================================
-
     def _build_ui(self):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(8, 8, 8, 8)
@@ -180,10 +170,8 @@ class NotesTab(QWidget):
         editor_v_layout.setContentsMargins(0, 0, 0, 0)
         editor_v_layout.setSpacing(6)
 
-        # Top Toolbar
         editor_v_layout.addWidget(self._build_toolbar())
 
-        # Main Editor / Preview Splitter
         self.editor_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor_splitter.setHandleWidth(6)
 
@@ -216,7 +204,6 @@ class NotesTab(QWidget):
 
         editor_v_layout.addWidget(self.editor_splitter, 1)
 
-        # Sleek Status & Action Footer
         editor_v_layout.addWidget(self._build_status_bar())
 
         editor_h_layout.addWidget(editor_pane, 1)
@@ -228,7 +215,6 @@ class NotesTab(QWidget):
         layout.setContentsMargins(8, 10, 8, 8)
         layout.setSpacing(6)
 
-        # Quick Chapter Filter
         self.chapter_search = QLineEdit()
         self.chapter_search.setPlaceholderText("Filter chapters...")
         self.chapter_search.setClearButtonEnabled(True)
@@ -254,7 +240,6 @@ class NotesTab(QWidget):
         self.section_list.currentRowChanged.connect(self._on_section_selected)
         layout.addWidget(self.section_list, 1)
 
-        # Primary Chapter Actions
         btn_row_top = QHBoxLayout()
         btn_row_top.setSpacing(4)
 
@@ -274,7 +259,6 @@ class NotesTab(QWidget):
             btn_row_top.addWidget(b)
         layout.addLayout(btn_row_top)
 
-        # Reorder Row
         btn_row_order = QHBoxLayout()
         btn_row_order.setSpacing(4)
 
@@ -309,7 +293,6 @@ class NotesTab(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(4)
 
-        # --- Group 1: Text & Structure ---
         heading_btn = QToolButton()
         heading_btn.setText("Heading ▾")
         heading_menu = QMenu(heading_btn)
@@ -346,7 +329,6 @@ class NotesTab(QWidget):
 
         layout.addWidget(self._make_vsep())
 
-        # --- Group 2: Conlang & Linguistics ---
         conlang_btn = QPushButton("Conlang Script")
         conlang_btn.setToolTip("Wrap text in custom conlang font {{f:...}} (Ctrl+K)")
         conlang_btn.clicked.connect(lambda: self._wrap_selection("{{f:", "}}"))
@@ -378,7 +360,6 @@ class NotesTab(QWidget):
         self.ipa_btn.clicked.connect(self._toggle_ipa_picker)
         layout.addWidget(self.ipa_btn)
 
-        # Gloss Dropdown (supports both quickConlangMark block & classic Gloss Dialog)
         gloss_btn = QToolButton()
         gloss_btn.setText("Gloss ▾")
         gloss_btn.setToolTip("Insert an interlinear gloss")
@@ -396,7 +377,6 @@ class NotesTab(QWidget):
         gloss_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         layout.addWidget(gloss_btn)
 
-        # Callout Block Dropdown
         callout_btn = QToolButton()
         callout_btn.setText("Callout ▾")
         callout_btn.setToolTip("Insert a styled Note, Example, Sound Rule, or Warning box")
@@ -416,7 +396,6 @@ class NotesTab(QWidget):
 
         layout.addWidget(self._make_vsep())
 
-        # --- Group 3: Embeds & Help ---
         table_macro_btn = QPushButton("Embed Table")
         table_macro_btn.setToolTip("Embed a dynamic Grammar Table {{table:Name}}")
         table_macro_btn.clicked.connect(self._insert_table_macro)
@@ -433,7 +412,6 @@ class NotesTab(QWidget):
 
         layout.addStretch()
 
-        # --- Group 4: View Mode Switcher ---
         self.view_group = QButtonGroup(self)
         self.view_group.setExclusive(True)
 
@@ -495,20 +473,16 @@ class NotesTab(QWidget):
         QShortcut(QKeySequence("Ctrl+S"), self, activated=self.save_grammar_rules)
 
     def _set_view_mode(self, mode_id: int):
-        if mode_id == 0:  # Write only
+        if mode_id == 0:
             self.editor.setVisible(True)
             self.preview.setVisible(False)
-        elif mode_id == 1:  # Split
+        elif mode_id == 1:
             self.editor.setVisible(True)
             self.preview.setVisible(True)
             self.editor_splitter.setSizes([450, 450])
-        elif mode_id == 2:  # Read only
+        elif mode_id == 2:
             self.editor.setVisible(False)
             self.preview.setVisible(True)
-
-    # =========================================================================
-    # GRAMMAR TABLES PANE (Preserved & Integrated)
-    # =========================================================================
 
     def _build_tables_pane(self):
         tables_frame = QGroupBox("Grammar Tables")
@@ -582,10 +556,6 @@ class NotesTab(QWidget):
         tables_layout.addWidget(table_editor_frame)
 
         return tables_frame
-
-    # =========================================================================
-    # CHAPTER MANAGEMENT & PERSISTENCE
-    # =========================================================================
 
     def load_grammar_rules(self):
         """Reload chapters from main_app.grammar_data (e.g. on tab activation)."""
@@ -732,19 +702,12 @@ class NotesTab(QWidget):
         chars = len(text)
         self.word_count_label.setText(f"{words:,} words  •  {chars:,} chars")
 
-    # =========================================================================
-    # CONLANGMARK PARSER & HTML RENDERER
-    # =========================================================================
-
     def _update_preview(self, markdown_text: str):
-        # 1. Expand multi-line blocks first (::: gloss, ::: note/example/rule/warning)
         processed = self._expand_gloss_blocks(markdown_text)
         processed = self._expand_callout_blocks(processed)
 
-        # 2. Expand embedded tables into rich HTML tables
         processed = self._expand_table_macros(processed)
 
-        # 3. Expand inline linguistic macros ({{f:...}}, {{ipa:...}}, {{sc:...}}, {{rule:...}})
         processed = self._expand_inline_macros(processed)
 
         body_html = markdown.markdown(
@@ -752,7 +715,6 @@ class NotesTab(QWidget):
             extensions=['tables', 'sane_lists', 'fenced_code', 'nl2br']
         )
 
-        # 4. Prepare custom conlang @font-face under an isolated family name
         font_face_css = ""
         conlang_font_family = "ConlangCustomFont"
         font_path = getattr(self.main_app, "font_path", None)
@@ -770,7 +732,6 @@ class NotesTab(QWidget):
             except OSError:
                 pass
 
-        # 5. Theme palette
         if getattr(self, 'is_dark_mode', False):
             bg_color = "#0d1117"
             surface_color = "#161b22"
@@ -1021,22 +982,11 @@ class NotesTab(QWidget):
         self.preview.setHtml(full_html, base_url)
 
     def _expand_inline_macros(self, text: str) -> str:
-        # {{f:text}} -> Conlang custom font span
         text = FONT_MACRO_RE.sub(
-            lambda m: f'<span class="conlang-script">{html.escape(m.group(1))}</span>',
-            text
+            lambda m: f'<span class="conlang-script">{html.escape(m.group(1))}</span>', text
         )
-        # {{ipa:text}} -> IPA transcription badge
-        text = IPA_MACRO_RE.sub(
-            lambda m: f'<span class="ipa-badge">{html.escape(m.group(1))}</span>',
-            text
-        )
-        # {{sc:text}} -> Small caps grammatical tag
-        text = SC_MACRO_RE.sub(
-            lambda m: f'<span class="sc">{html.escape(m.group(1).lower())}</span>',
-            text
-        )
-        # {{rule:A > B / C _ D}} -> Formatted phonological rule
+        text = IPA_MACRO_RE.sub(lambda m: f'<span class="ipa-badge">{html.escape(m.group(1))}</span>', text)
+        text = SC_MACRO_RE.sub(lambda m: f'<span class="sc">{html.escape(m.group(1).lower())}</span>', text)
         def _format_rule(match):
             raw = html.escape(match.group(1).strip())
             raw = raw.replace("-&gt;", "→").replace("&gt;", "→")
@@ -1086,7 +1036,6 @@ class NotesTab(QWidget):
                 for row_idx, row_tokens in enumerate(tokenized_rows):
                     tok = row_tokens[col_idx] if col_idx < len(row_tokens) else ""
                     if row_idx == 0:
-                        # Support inline {{f:...}} on the first gloss line
                         cell_txt = self._expand_inline_macros(tok)
                         col_cells.append(f'<span class="gloss-line-0">{cell_txt}</span>')
                     elif row_idx == len(tokenized_rows) - 1:
@@ -1126,7 +1075,6 @@ class NotesTab(QWidget):
             body_md = match.group(3).strip()
 
             header = html.escape(custom_title) if custom_title else default_titles.get(kind, "Note")
-            # Process inline macros & markdown inside the callout body
             inner_expanded = self._expand_inline_macros(body_md)
             inner_html = markdown.markdown(
                 inner_expanded,
@@ -1208,10 +1156,6 @@ class NotesTab(QWidget):
             lines.append("| " + " | ".join(cells) + " |")
 
         return "\n".join(lines) + "\n\n"
-
-    # =========================================================================
-    # EDITOR INSERTION HELPERS
-    # =========================================================================
 
     def _wrap_selection(self, prefix, suffix=None):
         suffix = suffix if suffix is not None else prefix
@@ -1407,10 +1351,6 @@ class NotesTab(QWidget):
         if ok and name:
             self.editor.insertPlainText(f"{{{{table:{name}}}}}")
 
-    # =========================================================================
-    # GRAMMAR TABLE METHODS
-    # =========================================================================
-
     def update_grammar_table_listbox(self):
         self.table_listbox.clear()
         for table_name in sorted(self.main_app.grammar_data['tables'].keys()):
@@ -1506,7 +1446,6 @@ class NotesTab(QWidget):
         self.main_app.grammar_data['tables'][table_name] = table_object
         self.main_app.save_grammar()
 
-        # Live-refresh chapter preview if this table is embedded
         if self.current_section_index is not None:
             self._update_preview(self.editor.toPlainText())
 
